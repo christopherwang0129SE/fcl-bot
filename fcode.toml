@@ -1,0 +1,6 @@
+# fcode.toml - Florent Code League project config
+
+bots_dir = "bots"
+maps_dir = "maps"
+replay = "replay.replay26"
+seed = 1
