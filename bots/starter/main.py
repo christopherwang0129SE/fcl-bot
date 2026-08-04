@@ -109,6 +109,7 @@ class Player:
         self.target: Position | None = None   # where we're trying to walk to
         self.last_pos: Position | None = None  # position last round (for stuck detection)
         self.stuck = 0                         # consecutive rounds without moving
+        self.target_age = 0                    # rounds pursuing current target
 
         # Cached core position (read from the store once, then reused)
         self.core_pos: Position | None = None
@@ -343,20 +344,24 @@ class Player:
         """Navigate toward our current target, picking a new one if needed.
 
         Target priority: visible ore > ore shared via store > random position.
-        If we've been stuck for 3+ rounds, we give up on the current target
-        and pick a fresh one.
+        If we've been stuck for 3+ rounds, or pursuing a target for 15+ rounds
+        without reaching it, we give up and pick a fresh one.
         """
         if ct.get_move_cooldown() != 0:
             return
 
         pos = ct.get_position()
 
-        # Pick a new target if we don't have one, reached it, or are stuck
-        if self.target is None or pos == self.target or self.stuck >= 3:
+        # Pick a new target if we don't have one, reached it, are stuck, or
+        # have been pursuing it for too long (target timeout)
+        if self.target is None or pos == self.target or self.stuck >= 3 or self.target_age > 10:
             self.target = self._pick_target(ct)
             self.stuck = 0
+            self.target_age = 0
         if self.target is None:
             return
+
+        self.target_age += 1
 
         # Builder bots move only in cardinal directions, so use
         # cardinal_direction_to (direction_to can return a diagonal, which is
@@ -388,7 +393,9 @@ class Player:
         pos = ct.get_position()
         next_pos = pos.add(d)
 
-        if ct.is_tile_empty(next_pos) and self.core_pos is not None:
+        w, h = ct.get_map_width(), ct.get_map_height()
+        if (0 <= next_pos.x < w and 0 <= next_pos.y < h and
+            ct.is_tile_empty(next_pos) and self.core_pos is not None):
             toward_core = next_pos.direction_to(self.core_pos)
             cardinal = nearest_cardinal(toward_core)
             if ct.can_build_conveyor(next_pos, cardinal):
