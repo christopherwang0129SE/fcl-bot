@@ -279,30 +279,62 @@ class Player:
         return False
 
     def _try_build_conveyor_toward_core(self, ct: Controller, harvester_pos: Position) -> None:
-        """Place a conveyor adjacent to a harvester, facing toward the core.
+        """Build a conveyor chain from a harvester toward the core, ending with a splitter.
 
-        Harvesters output titanium stacks to adjacent buildings. By placing a
-        conveyor on the core-facing side, resources will start flowing in the
-        right direction. For a complete supply chain you'd need more conveyors
-        linking all the way back to the core.
+        Harvesters output titanium stacks to adjacent buildings. This method builds a chain
+        of conveyors from the harvester toward the core, using a Splitter for the final
+        segment closest to the core. Splitters provide redundancy: if one output path is cut,
+        the other can still deliver ore.
         """
         if self.core_pos is None:
             return
-        ti = ct.get_global_resources()
-        cost = ct.get_conveyor_cost()
-        if ti < cost:
-            return
 
-        # Figure out which cardinal direction points from the harvester toward the core
-        toward_core = harvester_pos.direction_to(self.core_pos)
-        if toward_core == Direction.CENTRE:
-            return  # harvester is right on top of the core (unlikely)
-        facing = nearest_cardinal(toward_core)
+        pos = harvester_pos
+        distance_to_core = pos.distance_squared(self.core_pos)
 
-        # Place the conveyor one step toward the core from the harvester
-        conv_pos = harvester_pos.add(facing)
-        if ct.can_build_conveyor(conv_pos, facing):
-            ct.build_conveyor(conv_pos, facing)
+        # Build a chain of conveyors/splitters toward the core (up to max 5 segments)
+        for segment in range(5):
+            if distance_to_core <= 2:
+                # Close enough to core; try to build final segment with a splitter
+                toward_core = pos.direction_to(self.core_pos)
+                if toward_core == Direction.CENTRE:
+                    return
+                facing = nearest_cardinal(toward_core)
+                splitter_pos = pos.add(facing)
+
+                # Check if we have enough resources for a splitter
+                cost = ct.get_splitter_cost()
+                ti = ct.get_global_resources()
+                if ti >= cost and ct.can_build_splitter(splitter_pos, facing):
+                    ct.build_splitter(splitter_pos, facing)
+                    return
+                # Fall back to conveyor if splitter unavailable
+                elif ct.can_build_conveyor(splitter_pos, facing):
+                    cost = ct.get_conveyor_cost()
+                    if ti >= cost:
+                        ct.build_conveyor(splitter_pos, facing)
+                    return
+                else:
+                    return
+            else:
+                # Build intermediate conveyor segment
+                toward_core = pos.direction_to(self.core_pos)
+                if toward_core == Direction.CENTRE:
+                    return
+                facing = nearest_cardinal(toward_core)
+                conv_pos = pos.add(facing)
+
+                cost = ct.get_conveyor_cost()
+                ti = ct.get_global_resources()
+                if ti < cost:
+                    return  # Not enough resources to continue
+
+                if ct.can_build_conveyor(conv_pos, facing):
+                    ct.build_conveyor(conv_pos, facing)
+                    pos = conv_pos
+                    distance_to_core = pos.distance_squared(self.core_pos)
+                else:
+                    return  # Can't build at this position
 
     def _try_build_gunner(self, ct: Controller) -> bool:
         """Build a gunner turret on an adjacent tile, facing away from the core.
