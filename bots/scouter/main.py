@@ -6,7 +6,7 @@ from mapclass import Map, pack_pos, unpack_pos
 CARDINALS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 Environments = [0, Environment.EMPTY, Environment.WALL, Environment.ORE_TITANIUM]
 ENV_MAP = Map()
-SCOUT_DATA1 = 15
+SCOUT_SLOTS = list(range(8, 14))  # 6 slots for scouting, allows multiple builders to report simultaneously
 FRONTIER_TARGET = 14
 FRONTIER_COMPUTE_INTERVAL = 5
 OFFSETS = [[(-4,-2), (-3,-3), (-2,-4), (-1,-4), (0,-4), (1,-4), (2,-4), (3,-3), (4,-2)],
@@ -74,11 +74,15 @@ class Player:
                         break
 
             else:
-                scouted = parse_scout(ct.read_store(SCOUT_DATA1))
-                ct.write_store(SCOUT_DATA1, 0)
-                for pos, env in scouted.items():
-                    ENV_MAP.set_environment_at(pos, env)
-                    ct.draw_indicator_dot(pos, 0, 255, 0)
+                # Read all scout slots and update map
+                for slot in SCOUT_SLOTS:
+                    scout_data = ct.read_store(slot)
+                    if scout_data > 0:
+                        scouted = parse_scout(scout_data)
+                        for pos, env in scouted.items():
+                            ENV_MAP.set_environment_at(pos, env)
+                            ct.draw_indicator_dot(pos, 0, 255, 0)
+                        ct.write_store(slot, 0)  # Clear the slot after reading
 
                 # Periodically compute and broadcast the nearest unscouted cell from core position
                 if ct.get_current_round() % FRONTIER_COMPUTE_INTERVAL == 0:
@@ -138,7 +142,9 @@ class Player:
                 new_pos = ct.get_position()
                 print(f"round {ct.get_current_round()}: moved {direction.name} to {new_pos} toward {target}")
                 scout_n = encode_scout(new_pos, direction, ct)
-                ct.write_store(SCOUT_DATA1, scout_n)
+                # Write to this builder's assigned scout slot (based on entity ID)
+                scout_slot = SCOUT_SLOTS[ct.get_id() % len(SCOUT_SLOTS)]
+                ct.write_store(scout_slot, scout_n)
 
 
 if __name__ == '__main__':
