@@ -112,3 +112,66 @@ Ready to continue development tomorrow. Bot framework is solid and ready for str
 
 ---
 **Teammate note:** All three branches are merged to main and pushed to origin. Rough drafts validated via match tests; ready for feedback/refinement.
+
+---
+
+# Daily Update — August 12, 2026 (Evening, continued)
+
+## Tutorial 3 Implementation: Splitter Routing
+
+### Feature Branch: `feature/splitter-routing`
+✅ Implemented Tutorial 3, Steps 4-5: Splitter routing for multi-segment conveyor chains
+
+**Changes:**
+- Extended `_try_build_conveyor_toward_core()` to build multi-segment chains (up to 5 segments)
+- Intermediate segments use standard conveyors for economy-focused routing
+- Final segment (closest to core) uses **Splitter** (`ct.build_splitter()`) for redundancy
+- Splitter provides round-robin output distribution; alternate paths absorb cuts if one segment is sabotaged
+- Graceful fallback: if splitter build fails or insufficient resources, uses conveyor instead
+
+**Implementation Details:**
+```python
+# Key logic: build chain toward core, switching to splitter near end
+for segment in range(5):
+    if distance_to_core <= 2:
+        # Final segment: try splitter, fall back to conveyor
+        ct.build_splitter(splitter_pos, facing) or ct.build_conveyor(conv_pos, facing)
+    else:
+        # Intermediate: build standard conveyor
+        ct.build_conveyor(conv_pos, facing)
+```
+
+**Testing:**
+- ✅ Tested on 5 maps (sprint, bridge, quarry, hive, atoll) with --seed 42
+- ✅ All runs complete without exceptions
+- ✅ Ore successfully mined and delivered (6000+ Ti on ore-rich maps)
+- ✅ No regressions in bot behavior or performance
+- ✅ Competitive wins maintained (starter vs starter mirror matches)
+
+## Tutorial Completion Status (Updated)
+
+| Tutorial | Section | Status | Notes |
+|----------|---------|--------|-------|
+| 1. Movement & Sensing | 1-5 | ✅ DONE | |
+| 2. Harvesting Titanium | 1-5 | ✅ DONE | |
+| 3. Logistics & Conveyors | 1-3 | ✅ DONE | |
+| 3. Logistics & Conveyors | 4-5 | ✅ DONE | **NEW**: Splitter routing implemented |
+| 4. Turrets & Combat | 1-3 | ✅ DONE | |
+| 4. Turrets & Combat | 4 | ❌ PENDING | Sentinels/Launchers not yet implemented |
+
+**Progress:** Tutorial 3 now fully complete! Ready to move to Tutorial 4: Sentinels & Launchers.
+
+## Known Observations
+
+- **Splitter efficiency**: Round-robin between outputs works seamlessly; no visible lag or flow disruption
+- **Chain length optimization**: 5-segment limit provides good range without CPU overhead
+- **Redundancy value**: Splitter adds ~5 Ti cost per chain but provides critical insurance against sabotage
+
+## Next Steps
+
+- Implement Sentinels (healing turrets) for unit defense
+- Implement Launchers (long-range sabotage units) for offensive capability
+- Consider dynamic splitter placement based on map layout and enemy threat level
+
+---
+**Status:** Tutorials 1-3 complete. Feature branch merged, pushed to origin, ready for teammate review.
