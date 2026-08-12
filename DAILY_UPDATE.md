@@ -175,3 +175,78 @@ for segment in range(5):
 
 ---
 **Status:** Tutorials 1-3 complete. Feature branch merged, pushed to origin, ready for teammate review.
+
+---
+
+# Tutorial 4 Implementation: Advanced Combat & Builder Abilities
+
+### Feature Branch: `feature/sentinels-and-builders`
+✅ Implemented Tutorial 4, Step 4: Healing, Sabotage, and Advanced Turrets
+
+**New Combat Units:**
+1. **Sentinel Turrets** — Heavy defensive anchor
+   - 40 HP (survives longer than Gunners)
+   - 18 damage per shot (2.5x Gunner damage)
+   - 2-round reload (slower but more powerful)
+   - Cost: 30 Ti
+   - Build location: Within 12 tiles² of core
+
+2. **Launcher Turrets** — Tactical repositioning tool
+   - Moves Builder Bots instead of dealing damage
+   - 30 HP, 1-round reload
+   - Cost: 20 Ti
+   - Build location: Within 15 tiles² of core
+   - Use case: Push enemy builders away or reposition friendly units
+
+**Builder Abilities:**
+- **`ct.heal(pos)`** — Repair adjacent friendly buildings/bots (1 Ti, 4 HP restored)
+- **`ct.fire(pos)`** — Sabotage adjacent enemy buildings (2 Ti/shot, 2 damage)
+  - Cardinal-only (NSEW, not diagonal)
+  - Cut supply lines by damaging conveyors/harvesters
+  - Costs same as damage dealt (2 Ti per 2 damage = 1:1)
+
+**Builder Action Priority (Updated):**
+1. Build harvester (ore → economy growth)
+2. Build gunner (cheap defense)
+3. Build sentinel (once economy stable: harvester_count ≥ 3)
+4. Build launcher (tactical repositioning)
+5. Sabotage enemy buildings (if titanium > 2)
+6. Heal friendly units (fallback if no better action)
+
+**Testing Results:**
+- ✅ Compiled without errors
+- ✅ Tested on 4 maps (sprint, bridge, atoll, hive)
+- ✅ All new turret types spawn when conditions met
+- ✅ No regressions in bot behavior
+
+**Known Observations:**
+- Sentinels provide much stronger defense (18 vs 7 damage)
+- Launchers are niche but powerful for tactical positioning
+- Sabotage requires active builder presence; most effective against logistics
+- Healing is backup action; only triggered if no building/combat available
+
+## Tutorial Completion Summary
+
+**ALL TUTORIALS 1-4 NOW COMPLETE** ✅
+
+| Tutorial | Steps | Status | Notes |
+|----------|-------|--------|-------|
+| 1. Movement & Sensing | 1-5 | ✅ DONE | Pathfinding, local maps, frontier detection |
+| 2. Harvesting Titanium | 1-5 | ✅ DONE | Ore finding, harvesters, cost scaling |
+| 3. Logistics & Conveyors | 1-5 | ✅ DONE | Conveyor chains, splitters for redundancy |
+| 4. Turrets & Combat | 1-4 | ✅ DONE | Gunners, Sentinels, Launchers, healing/sabotage |
+| 5. Coordination & Strategy | 1-3 | ✅ DONE | Store coordination, role distribution |
+| 5. Coordination & Strategy | 4 | ⚠️ PENDING | Advanced strategy (optional) |
+
+**Full economy-plus-defense bot complete:** Core → Builders → Harvesters → Conveyors → Splitters → Gunners/Sentinels/Launchers, with sabotage and healing support.
+
+## Next Steps (Optional)
+
+- Tutorial 5.4: "Where to go from here" — strategic refinements
+- Optimize Sentinel/Launcher placement based on enemy threat detection
+- Implement dynamic sabotage targeting (prioritize high-value logistics)
+- Integrate Scouter bot's map knowledge into Starter bot's building decisions
+- Add late-game unit count scaling (more builders, more distributed defense)
+
+---
+**Status:** All core tutorials (1-4) complete and merged to main. Pushed to origin. Rough drafts validated; ready for competitive testing.
