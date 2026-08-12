@@ -217,17 +217,21 @@ class Player:
         self.last_pos = pos
 
         # --- Build phase (requires action cooldown == 0) ---
-        # Try to build a harvester first; if none available, consider a gunner
+        # Try to build in priority order: harvester → gunner → sentinel → launcher
         if ct.get_action_cooldown() == 0:
             if not self._try_build_harvester(ct):
-                # Only build gunners once our economy is up (enough harvesters)
                 harvester_count = ct.read_store(SLOT_HARVESTER_COUNT)
                 if harvester_count >= TARGET_HARVESTERS:
-                    self._try_build_gunner(ct)
+                    # Economy stable; switch to defense: gunners → sentinels → launchers
+                    if not self._try_build_gunner(ct):
+                        if not self._try_build_sentinel(ct):
+                            self._try_build_launcher(ct)
 
-        # If we still have an action left (didn't build anything), heal nearby
+        # If we still have an action left (didn't build anything), try sabotage or heal
         if ct.get_action_cooldown() == 0:
-            self._try_heal(ct)
+            if not self._try_fire_sabotage(ct):
+                # No targets to sabotage; heal friendly units instead
+                self._try_heal(ct)
 
         # --- Move phase (requires move cooldown == 0) ---
         self._move_toward_target(ct)
@@ -370,6 +374,82 @@ class Player:
                 ct.build_gunner(build_pos, facing)
                 return True
         return False
+
+    def _try_build_sentinel(self, ct: Controller) -> bool:
+        """Build a sentinel turret on an adjacent tile.
+
+        Sentinels are heavy defensive turrets (40 HP, 18 damage, long range, 2-round reload).
+        They provide strong area defense and cost 30 Ti. Only build if we're close to core
+        and have surplus resources (after harvesters/conveyors).
+        """
+        ti = ct.get_global_resources()
+        cost = ct.get_sentinel_cost()
+        if ti < cost:
+            return False
+
+        pos = ct.get_position()
+        # Only build sentinels very close to core for maximum protection
+        if self.core_pos is None or pos.distance_squared(self.core_pos) > 12:
+            return False
+
+        # Face away from core (toward threats)
+        facing = pos.direction_to(self.core_pos).opposite()
+        if facing == Direction.CENTRE:
+            facing = random.choice(DIRECTIONS)
+
+        for d in Direction:
+            build_pos = pos.add(d)
+            if ct.can_build_sentinel(build_pos, facing):
+                ct.build_sentinel(build_pos, facing)
+                return True
+        return False
+
+    def _try_build_launcher(self, ct: Controller) -> bool:
+        """Build a launcher turret on an adjacent tile.
+
+        Launchers reposit enemy and friendly Builder Bots instead of dealing damage.
+        Cost 20 Ti, fire every round. Useful for tactical repositioning or blocking
+        enemy advances. Only build in late game with stable economy.
+        """
+        ti = ct.get_global_resources()
+        cost = ct.get_launcher_cost()
+        if ti < cost:
+            return False
+
+        pos = ct.get_position()
+        # Build launchers close to core for flexible unit control
+        if self.core_pos is None or pos.distance_squared(self.core_pos) > 15:
+            return False
+
+        # Launchers don't have a facing like gunners, but we still orient them
+        facing = pos.direction_to(self.core_pos).opposite()
+        if facing == Direction.CENTRE:
+            facing = random.choice(DIRECTIONS)
+
+        for d in Direction:
+            build_pos = pos.add(d)
+            if ct.can_build_launcher(build_pos, facing):
+                ct.build_launcher(build_pos, facing)
+                return True
+        return False
+
+    def _try_fire_sabotage(self, ct: Controller) -> None:
+        """Sabotage adjacent enemy buildings by firing.
+
+        Only valid on adjacent tiles (NSEW cardinal). Costs 2 Ti per shot, deals 2 damage.
+        Useful for cutting enemy supply lines and disrupting their logistics.
+        Only attempt if we have surplus resources.
+        """
+        ti = ct.get_global_resources()
+        if ti < 2:  # Not enough for a shot
+            return
+
+        pos = ct.get_position()
+        for d in (Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST):
+            target = pos.add(d)
+            if ct.can_fire(target):
+                ct.fire(target)
+                return
 
     def _try_heal(self, ct: Controller) -> None:
         """Heal a damaged friendly building or bot on an adjacent tile.
