@@ -1,6 +1,19 @@
 from fcode import Controller, Team, EntityType, Environment, Direction, Position, GameError
 
 
+def pack_pos(pos: Position) -> int:
+    """Encode a position into a single u32 for the communication store.
+    We offset by +1 so that position (0, 0) doesn't encode as 0, which we reserve to mean 'no data'."""
+    return ((pos.x + 1) << 16) | (pos.y + 1)
+
+
+def unpack_pos(val: int) -> Position | None:
+    """Decode a position from the communication store. Returns None if empty (0)."""
+    if val == 0:
+        return None
+    return Position((val >> 16) - 1, (val & 0xFFFF) - 1)
+
+
 class Map:
     """Stores and manages map data, location of obstacles and resources
     possibly structures units and pathfinding pre-compute"""
@@ -35,6 +48,22 @@ class Map:
     def scouted_at(self, pos: Position) -> bool:
         if self.get_environment_at(pos): return True
         return False
+
+    def nearest_unscouted(self, from_pos: Position, max_radius: int = 10) -> Position | None:
+        """Scan outward from from_pos in a spiral/ring pattern, returning the first unscouted cell within max_radius.
+        Returns None if all cells within the radius have been scouted."""
+        if not self.configured:
+            return None
+        for radius in range(1, max_radius + 1):
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue
+                    pos = Position(from_pos.x + dx, from_pos.y + dy)
+                    if 0 <= pos.x < self.width and 0 <= pos.y < self.height:
+                        if self.terrain_grid[pos.y][pos.x] == 0:
+                            return pos
+        return None
 
 
 if __name__ == '__main__':

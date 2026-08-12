@@ -1,13 +1,14 @@
 import random
 
-from fcode import Controller, Team, EntityType, Environment, Direction, Position, GameError
-from mapclass import Map
+from fcode import Controller, Team, EntityType, Environment, Direction, Position, GameError, GameConstants
+from mapclass import Map, pack_pos, unpack_pos
 
-# Builder bots move only in the four cardinal directions.
 CARDINALS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 Environments = [0, Environment.EMPTY, Environment.WALL, Environment.ORE_TITANIUM]
 ENV_MAP = Map()
 SCOUT_DATA1 = 15
+FRONTIER_TARGET = 14
+FRONTIER_COMPUTE_INTERVAL = 5
 OFFSETS = [[(-4,-2), (-3,-3), (-2,-4), (-1,-4), (0,-4), (1,-4), (2,-4), (3,-3), (4,-2)],
            [(-4,2), (-3,3), (-2,4), (-1,4), (0,4), (1,4), (2,4), (3,3), (4,2)],
            [(2,4), (3,3), (4,2), (4,1), (4,0), (4,-1), (4,-2), (3,-3), (2,-4)],
@@ -49,6 +50,12 @@ def parse_scout(number: int) -> dict[Position, Environment]:
     return tiles
 
 class Player:
+    def __init__(self):
+        self.local_map = None
+        self.last_pos = None
+        self.stuck_count = 0
+        self.frontier_target = None
+
     def run(self, ct: Controller) -> None:
 
         etype = ct.get_entity_type()
@@ -72,6 +79,14 @@ class Player:
                 for pos, env in scouted.items():
                     ENV_MAP.set_environment_at(pos, env)
                     ct.draw_indicator_dot(pos, 0, 255, 0)
+
+                # Periodically compute and broadcast the nearest unscouted cell from core position
+                if ct.get_current_round() % FRONTIER_COMPUTE_INTERVAL == 0:
+                    core_pos = ct.get_position()
+                    frontier = ENV_MAP.nearest_unscouted(core_pos, max_radius=30)
+                    if frontier:
+                        ct.write_store(FRONTIER_TARGET, pack_pos(frontier))
+
                 print(ENV_MAP)
 
         elif etype == EntityType.BUILDER_BOT:
@@ -80,19 +95,50 @@ class Player:
     def _run_builder(self, ct: Controller) -> None:
         pos = ct.get_position()
 
+        # Initialize local map on first run
+        if self.local_map is None:
+            self.local_map = Map()
+            self.local_map.configure(ct.get_map_width(), ct.get_map_height())
 
-        open_dirs = [
-            d for d in CARDINALS
-            if ct.can_move(d) and ct.get_tile_env(pos.add(d)) == Environment.EMPTY
-        ]
-        move_options = open_dirs or [d for d in CARDINALS if ct.can_move(d)]
-        if move_options:
-            direction = random.choice(move_options)
-            ct.move(direction)
-            print(f"round {ct.get_current_round()}: moved {direction.name} to {ct.get_position()}")
-            scout_n = encode_scout(ct.get_position(), direction, ct)
-            print(f"{scout_n=}")
-            ct.write_store(SCOUT_DATA1, scout_n)
+        # Update local map from nearby visible tiles
+        for tile in ct.get_nearby_tiles():
+            env = ct.get_tile_env(tile)
+            self.local_map.set_environment_at(tile, env)
+
+        # Detect stuck (if we didn't move last round, increment counter)
+        if self.last_pos == pos:
+            self.stuck_count += 1
+        else:
+            self.stuck_count = 0
+        self.last_pos = pos
+
+        # Pick a target: prefer local unscouted, fall back to frontier target from core, else random
+        target = None
+
+        # Try local unscouted nearby
+        local_frontier = self.local_map.nearest_unscouted(pos, max_radius=8)
+        if local_frontier:
+            target = local_frontier
+        else:
+            # Read frontier target from core (broadcast every 5 rounds)
+            frontier_packed = ct.read_store(FRONTIER_TARGET)
+            frontier = unpack_pos(frontier_packed)
+            if frontier:
+                target = frontier
+            else:
+                # Fallback: random position
+                target = Position(random.randint(0, ct.get_map_width() - 1),
+                                  random.randint(0, ct.get_map_height() - 1))
+
+        # Move toward target using cardinal direction
+        if target and target != pos:
+            direction = pos.cardinal_direction_to(target)
+            if direction != Direction.CENTRE and ct.can_move(direction):
+                ct.move(direction)
+                new_pos = ct.get_position()
+                print(f"round {ct.get_current_round()}: moved {direction.name} to {new_pos} toward {target}")
+                scout_n = encode_scout(new_pos, direction, ct)
+                ct.write_store(SCOUT_DATA1, scout_n)
 
 
 if __name__ == '__main__':
