@@ -2,6 +2,7 @@ import random
 
 from fcode import Controller, Team, EntityType, Environment, Direction, Position, GameError, GameConstants
 from mapclass import Map, pack_pos, unpack_pos
+from pathfind import bfs_path
 
 CARDINALS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 Environments = [0, Environment.EMPTY, Environment.WALL, Environment.ORE_TITANIUM]
@@ -55,6 +56,8 @@ class Player:
         self.last_pos = None
         self.stuck_count = 0
         self.frontier_target = None
+        self.current_target = None
+        self.path = None
 
     def run(self, ct: Controller) -> None:
 
@@ -134,17 +137,29 @@ class Player:
                 target = Position(random.randint(0, ct.get_map_width() - 1),
                                   random.randint(0, ct.get_map_height() - 1))
 
-        # Move toward target using cardinal direction
-        if target and target != pos:
+        # If target changed, recompute path via BFS
+        if target != self.current_target or not self.path:
+            self.current_target = target
+            self.path = bfs_path(self.local_map, pos, target, max_nodes=500)
+
+        # Follow the path if we have one
+        direction = None
+        if self.path:
+            direction = self.path.pop(0)
+
+        # Fallback: greedy cardinal step if no path found (e.g. target unreachable with known map)
+        if direction is None and target and target != pos:
             direction = pos.cardinal_direction_to(target)
-            if direction != Direction.CENTRE and ct.can_move(direction):
-                ct.move(direction)
-                new_pos = ct.get_position()
-                print(f"round {ct.get_current_round()}: moved {direction.name} to {new_pos} toward {target}")
-                scout_n = encode_scout(new_pos, direction, ct)
-                # Write to this builder's assigned scout slot (based on entity ID)
-                scout_slot = SCOUT_SLOTS[ct.get_id() % len(SCOUT_SLOTS)]
-                ct.write_store(scout_slot, scout_n)
+
+        # Try to move
+        if direction and direction != Direction.CENTRE and ct.can_move(direction):
+            ct.move(direction)
+            new_pos = ct.get_position()
+            print(f"round {ct.get_current_round()}: moved {direction.name} to {new_pos}")
+            scout_n = encode_scout(new_pos, direction, ct)
+            # Write to this builder's assigned scout slot (based on entity ID)
+            scout_slot = SCOUT_SLOTS[ct.get_id() % len(SCOUT_SLOTS)]
+            ct.write_store(scout_slot, scout_n)
 
 
 if __name__ == '__main__':

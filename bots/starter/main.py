@@ -33,6 +33,8 @@ Ideas for improvement:
 import random
 
 from fcode import Controller, Direction, EntityType, Environment, GameConstants, Position
+from mapclass import Map
+from pathfind import bfs_path
 
 # All directions except CENTRE — useful for spawning and turret facing (both
 # allow diagonals). Builder movement is cardinal-only, so use CARDINALS to move.
@@ -114,6 +116,10 @@ class Player:
         # Cached core position (read from the store once, then reused)
         self.core_pos: Position | None = None
 
+        # Pathfinding state
+        self.local_map: Map | None = None     # builder's local map of scouted terrain
+        self.path: list[Direction] | None = None  # cached path to current target
+
     def run(self, ct: Controller) -> None:
         """Entry point called by the engine every round for each unit.
 
@@ -186,6 +192,16 @@ class Player:
         5. Broadcast any visible ore to teammates via the store
         """
         pos = ct.get_position()
+
+        # Initialize local map on first run
+        if self.local_map is None:
+            self.local_map = Map()
+            self.local_map.configure(ct.get_map_width(), ct.get_map_height())
+
+        # Update local map from nearby visible tiles
+        for tile in ct.get_nearby_tiles():
+            env = ct.get_tile_env(tile)
+            self.local_map.set_environment_at(tile, env)
 
         # On our first turn, read the core's position from the store.
         # We cache it so we don't have to read every round.
@@ -341,7 +357,7 @@ class Player:
     # ------------------------------------------------------------------
 
     def _move_toward_target(self, ct: Controller) -> None:
-        """Navigate toward our current target, picking a new one if needed.
+        """Navigate toward our current target using BFS pathfinding, picking a new one if needed.
 
         Target priority: visible ore > ore shared via store > random position.
         If we've been stuck for 3+ rounds, or pursuing a target for 15+ rounds
@@ -356,6 +372,7 @@ class Player:
         # have been pursuing it for too long (target timeout)
         if self.target is None or pos == self.target or self.stuck >= 3 or self.target_age > 10:
             self.target = self._pick_target(ct)
+            self.path = None  # Clear path when target changes
             self.stuck = 0
             self.target_age = 0
         if self.target is None:
@@ -363,22 +380,32 @@ class Player:
 
         self.target_age += 1
 
-        # Builder bots move only in cardinal directions, so use
-        # cardinal_direction_to (direction_to can return a diagonal, which is
-        # not a legal move and would raise).
-        desired = pos.cardinal_direction_to(self.target)
-        if desired == Direction.CENTRE:
+        # If target changed or we don't have a path, compute one via BFS
+        if not self.path or (len(self.path) > 0 and self.path[0] is None):
+            self.path = bfs_path(self.local_map, pos, self.target, max_nodes=500)
+
+        # Follow the path if we have one
+        direction = None
+        if self.path:
+            direction = self.path.pop(0)
+
+        # Fallback: greedy cardinal step if no path found (e.g. target unreachable with known map)
+        if direction is None:
+            desired = pos.cardinal_direction_to(self.target)
+            if desired == Direction.CENTRE:
+                return
+            # Try the ideal cardinal first, then perpendiculars, then reverse
+            perpendicular = [d for d in CARDINALS if d not in (desired, desired.opposite())]
+            random.shuffle(perpendicular)
+            alternatives = [desired, *perpendicular, desired.opposite()]
+            for d in alternatives:
+                if self._try_move(ct, d):
+                    return
             return
 
-        # Try the ideal cardinal first, then the two perpendicular cardinals,
-        # then the reverse -- so if we're boxed in (e.g. by harvesters) we can
-        # still route around obstacles instead of sitting stuck. Never diagonal.
-        perpendicular = [d for d in CARDINALS if d not in (desired, desired.opposite())]
-        random.shuffle(perpendicular)
-        alternatives = [desired, *perpendicular, desired.opposite()]
-        for d in alternatives:
-            if self._try_move(ct, d):
-                return
+        # Try to move in the direction from our path
+        if direction and direction != Direction.CENTRE:
+            self._try_move(ct, direction)
 
     def _try_move(self, ct: Controller, d: Direction) -> bool:
         """Try to move one step in direction d, laying conveyor infra along the way.
