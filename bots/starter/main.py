@@ -259,6 +259,11 @@ class Player:
         After building, we also try to place a conveyor next to it to start
         routing the titanium back toward the core.
         """
+        # Don't build harvesters until we know where the core is — they need
+        # conveyors to route ore back, which requires core position.
+        if self.core_pos is None:
+            return False
+
         ti = ct.get_global_resources()
         cost = ct.get_harvester_cost()
         if ti < cost:
