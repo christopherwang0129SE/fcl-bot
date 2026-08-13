@@ -265,7 +265,7 @@ class Player:
             return False
 
         pos = ct.get_position()
-        for d in Direction:
+        for d in CARDINALS:
             build_pos = pos.add(d)
             if ct.can_build_harvester(build_pos):
                 ct.build_harvester(build_pos)
@@ -368,7 +368,7 @@ class Player:
             facing = random.choice(DIRECTIONS)
 
         # Try each adjacent tile for a valid gunner placement
-        for d in Direction:
+        for d in CARDINALS:
             build_pos = pos.add(d)
             if ct.can_build_gunner(build_pos, facing):
                 ct.build_gunner(build_pos, facing)
@@ -397,7 +397,7 @@ class Player:
         if facing == Direction.CENTRE:
             facing = random.choice(DIRECTIONS)
 
-        for d in Direction:
+        for d in CARDINALS:
             build_pos = pos.add(d)
             if ct.can_build_sentinel(build_pos, facing):
                 ct.build_sentinel(build_pos, facing)
@@ -421,15 +421,10 @@ class Player:
         if self.core_pos is None or pos.distance_squared(self.core_pos) > 15:
             return False
 
-        # Launchers don't have a facing like gunners, but we still orient them
-        facing = pos.direction_to(self.core_pos).opposite()
-        if facing == Direction.CENTRE:
-            facing = random.choice(DIRECTIONS)
-
-        for d in Direction:
+        for d in CARDINALS:
             build_pos = pos.add(d)
-            if ct.can_build_launcher(build_pos, facing):
-                ct.build_launcher(build_pos, facing)
+            if ct.can_build_launcher(build_pos):
+                ct.build_launcher(build_pos)
                 return True
         return False
 
@@ -458,7 +453,7 @@ class Player:
         there's actually a damaged friendly entity on the tile.
         """
         pos = ct.get_position()
-        for d in Direction:
+        for d in CARDINALS:
             check = pos.add(d)
             if ct.can_heal(check):
                 ct.heal(check)
