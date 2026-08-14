@@ -161,7 +161,6 @@ class Map:
         if self.get_environment_at(pos): return True
         return False
 
-
 if __name__ == '__main__':
     width, height = 18,6
     e_map = Map()
