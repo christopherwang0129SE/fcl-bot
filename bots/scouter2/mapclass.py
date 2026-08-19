@@ -1,5 +1,4 @@
 from fcode import Controller, Team, EntityType, Environment, Direction, Position, GameError
-from fcode.commands.submission import activate
 
 CARDINALS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 
