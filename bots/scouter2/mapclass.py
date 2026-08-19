@@ -3,8 +3,13 @@ from fcode.commands.submission import activate
 
 CARDINALS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 
+SYMMETRY_ROTATIONAL = 0
+SYMMETRY_HORIZONTAL = 1
+SYMMETRY_VERTICAL = 2
+
 def adjacent_tiles(tile: Position) -> list[Position]:
     return [tile.add(direction) for direction in CARDINALS]
+
 
 class Map:
     """Stores and manages map data, location of obstacles and resources
@@ -50,6 +55,7 @@ class Map:
         self.conveyor_distance_grid = [[63 for col in range(width)] for row in range(height)]
         self.own_core: list[Position] = []
         self.opp_core: list[Position] = []
+        self.known_symmetry = None
         for dx in 0,1:
             for dy in 0,1:
                 self.own_core.append(Position(core_pos.x + dx, core_pos.y + dy))
@@ -87,14 +93,18 @@ class Map:
         """Finds the unplanned ore that require fewest conveyor to connect and produces a plan to build it
         moves the ore from unplanned to planned and updates the build_plan grid and conveyor_distance grid"""
         easiest_build = min(self.unplanned_ore, key=lambda ore_tile: (min([self.get_conveyor_distance_at(adjacent) for adjacent in adjacent_tiles(ore_tile)])))
-        first_conveyor = min(adjacent_tiles(easiest_build), key=lambda tile: self.get_conveyor_distance_at(tile))
+        first_conveyor = min([tile for tile in adjacent_tiles(easiest_build) if self.get_environment_at(tile)==Environment.EMPTY], key=lambda tile: self.get_conveyor_distance_at(tile))
         build_direction = first_conveyor.cardinal_direction_to(easiest_build)
 
         active_conveyor = first_conveyor
         conveyor_path: list[Position] = []
+        path_directions = []
         while self.get_conveyor_distance_at(active_conveyor) > 0: #This one needs building
             conveyor_path.append(active_conveyor)
-            active_conveyor = min(adjacent_tiles(active_conveyor), key=lambda tile: self.get_conveyor_distance_at(tile))
+            adjacents = [tile for tile in adjacent_tiles(active_conveyor) if self.get_environment_at(tile)==Environment.EMPTY]
+            if not adjacents:
+                return False, first_conveyor, build_direction, path_directions
+            active_conveyor = min(adjacents, key=lambda tile: self.get_conveyor_distance_at(tile))
             if len(conveyor_path) > 8: return False, easiest_build, Direction.NORTH, []
 
         self.planned_ore.add(easiest_build)
@@ -104,7 +114,7 @@ class Map:
             self.set_buildplan_at(tile, 6)
 
         print(f"{conveyor_path=}")
-        path_directions = []
+
         while conveyor_path:
             path_directions.append(conveyor_path[-1].cardinal_direction_to(active_conveyor))
             active_conveyor = conveyor_path.pop()
@@ -139,7 +149,7 @@ class Map:
         if (not self.configured) or pos.x < 0 or pos.x >= self.width or pos.y < 0 or pos.y >= self.height: return
         self.buildplan_grid[pos.y][pos.x] = build_n
 
-    def get_environment_at(self, pos: Position) -> int | None:
+    def get_environment_at(self, pos: Position) -> Environment | None:
         if (not self.configured) or pos.x<0 or pos.x>=self.width or pos.y<0 or pos.y>=self.height: return None
         return self.environment_grid[pos.y][pos.x]
 
@@ -161,16 +171,75 @@ class Map:
         if self.get_environment_at(pos): return True
         return False
 
+    def get_unscouted_near(self, bot_pos: Position) -> Position | None:
+        for dx in range(10):
+            for dy in range(dx+1):
+                #print(f"DX: {dx}, DY: {dy}")
+                if self.get_environment_at(Position(bot_pos.x + dx,bot_pos.y+dy)) is 0:
+                    return Position(bot_pos.x + dx,bot_pos.y + dy)
+                if self.get_environment_at(Position(bot_pos.x - dx,bot_pos.y+dy)) is 0:
+                    return Position(bot_pos.x - dx, bot_pos.y + dy)
+                if self.get_environment_at(Position(bot_pos.x + dx,bot_pos.y-dy)) is 0:
+                    return Position(bot_pos.x + dx, bot_pos.y - dy)
+                if self.get_environment_at(Position(bot_pos.x - dx,bot_pos.y-dy)) is 0:
+                    return Position(bot_pos.x - dx, bot_pos.y - dy)
+        return None
+
+    def test_for_symmetry_kind(self, symmetry_kind: int) -> bool:
+        """Returns TRUE if the env-map supports the specified symmetry kind"""
+        if symmetry_kind == SYMMETRY_HORIZONTAL:
+            for y in range(self.height):
+                for x in range(self.width//2):
+                    if self.environment_grid[y][x] != 0 and self.environment_grid[y][self.width-x-1] != 0:
+                        if self.environment_grid[y][x] != self.environment_grid[y][self.width-x-1]:
+                            return False
+        elif symmetry_kind == SYMMETRY_VERTICAL:
+            for x in range(self.width):
+                for y in range(self.height//2):
+                    if self.environment_grid[y][x] != 0 and self.environment_grid[self.height -y -1][x] != 0:
+                        if self.environment_grid[y][x] != self.environment_grid[self.height -y -1][x]:
+                            return False
+        elif symmetry_kind == SYMMETRY_ROTATIONAL:
+            if self.width != self.height: return False
+            for x in range(self.width):
+                for y in range(self.height//2):
+                    if self.environment_grid[y][x] != 0 and self.environment_grid[self.height -y -1][self.width -x -1] != 0:
+                        if self.environment_grid[y][x] != self.environment_grid[self.height -y -1][self.width -x -1]:
+                            return False
+        return True
+
+    def discover_symmetry(self) -> bool:
+        possible = []
+        for symmetry_kind in [SYMMETRY_ROTATIONAL, SYMMETRY_HORIZONTAL, SYMMETRY_VERTICAL]:
+            if self.test_for_symmetry_kind(symmetry_kind): possible.append(symmetry_kind)
+        if len(possible) == 1:
+            self.known_symmetry = possible[0]
+            return True
+        return False
+
+    def deduce_opp_core(self):
+        if self.known_symmetry == SYMMETRY_HORIZONTAL:
+            for tile in self.own_core:
+                self.opp_core.append(Position(self.width - tile.x -1, tile.y))
+        elif self.known_symmetry == SYMMETRY_VERTICAL:
+            for tile in self.own_core:
+                self.opp_core.append(Position(tile.x, self.height - tile.y -1))
+        elif self.known_symmetry == SYMMETRY_ROTATIONAL:
+            for tile in self.own_core:
+                self.opp_core.append(Position(self.width - tile.x -1, self.height - tile.y -1))
+
 if __name__ == '__main__':
     width, height = 18,6
     e_map = Map()
     e_map.configure(width,height, Position(0,0))
     for row in range(height):
         for col in range(width//2):
+            pass
             e_map.set_environment_at(Position(col, row), Environment.EMPTY)
-    e_map.set_environment_at(Position(4, 0), Environment.WALL)
-    e_map.set_environment_at(Position(4, 1), Environment.WALL)
+    #e_map.set_environment_at(Position(4, 0), Environment.WALL)
+    #e_map.set_environment_at(Position(4, 1), Environment.WALL)
     e_map.set_environment_at(Position(6, 0), Environment.ORE_TITANIUM)
+    e_map.set_environment_at(Position(6, 5), Environment.ORE_TITANIUM)
     #e_map.set_environment_at(Position(1, 0), Environment.ORE_TITANIUM)
 
     #e_map.buildplan_grid[2][1] = 6
@@ -189,3 +258,12 @@ if __name__ == '__main__':
     print("Conveyor".center(width*2-1,'-'))
 
     print(e_map.conveyor_str())
+    print("Environment".center(width * 2 - 1, '-'))
+    print(e_map.environment_str())
+
+    print(f"ROTATIONAL: {e_map.test_for_symmetry_kind(SYMMETRY_ROTATIONAL)}")
+    print(f"HORIZONTAL: {e_map.test_for_symmetry_kind(SYMMETRY_HORIZONTAL)}")
+    print(f"VERTICAL: {e_map.test_for_symmetry_kind(SYMMETRY_VERTICAL)}")
+    print(f"{e_map.discover_symmetry()=}")
+    print(f"{e_map.known_symmetry=}")
+

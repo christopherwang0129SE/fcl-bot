@@ -31,7 +31,7 @@ ENTITIES_CODE = {EntityType.BUILDER_BOT: 1, EntityType.GUNNER: 2, EntityType.SEN
                  EntityType.SPLITTER: 6, EntityType.BARRIER: 7, EntityType.CORE: 0}
 
 """
-0 (GAME DATA): builders_made (5-bit)
+0 (GAME DATA): OppCoreBottom (10-bit) builders_made (5-bit)
 
 1 UNUSED
 2 UNUSED
@@ -98,14 +98,20 @@ def encode_scout(pos: Position, direc: Direction, ct: Controller) -> int:
 
     return number
 
-def encode_game_data(bots_made: int) -> int:
-    return bots_made
+def encode_game_data(bots_made: int, opp_core_bottom_right: Position) -> int:
+    """Encodes game data"""
+    data_number = bots_made
+    if opp_core_bottom_right is not None:
+        bots_made += (opp_core_bottom_right.x << 10) + (opp_core_bottom_right.y << 5)
+    return data_number
 
-def parse_game_data(ct: Controller) -> list[int]:
+def parse_game_data(ct: Controller) -> list[int|Position]:
     """Reads the store and returns (currently only) the number of bots made"""
     data_number = ct.read_store(SLOT_GAME_DATA)
     builders_made = data_number & 31
-    return [builders_made]
+    opp_core_bottom_right_x = data_number & (31 << 10)
+    opp_core_bottom_right_y = data_number & (31 << 5)
+    return [builders_made, Position(opp_core_bottom_right_x, opp_core_bottom_right_y)]
 
 def parse_scout(number: int) -> tuple[Position, dict[Position, Environment]]:
     """Unpack u32 into a position of the scouting bot and 9 environment data-pairs for the scouting edge"""
@@ -122,7 +128,7 @@ def parse_scout(number: int) -> tuple[Position, dict[Position, Environment]]:
         shift-=2
     return Position(x,y), tiles
 
-def read_stored_scout(starting_store_index: int, stored_map: Map, ct: Controller):
+def read_stored_scout(starting_store_index: int, stored_map: Map, ct: Controller) -> Position:
     """Reads data from ct.store (starting_index and decrementing) into the stored map and resets store-slots"""
     bot_pos, scouted_env = parse_scout(ct.read_store(starting_store_index))
     close_entities = parse_entities(ct.read_store(starting_store_index - 1))
@@ -144,6 +150,8 @@ def read_stored_scout(starting_store_index: int, stored_map: Map, ct: Controller
         tile = Position(bot_pos.x + dx, bot_pos.y + dy)
         stored_map.set_entity_at(tile, far_entities[i])
         ct.draw_indicator_dot(tile, 255, 0, 255)
+
+    return bot_pos
 
 def encode_build_order(go_to: Position, build_type: EntityType | None, build_direction: Direction, conveyor_path: list[Direction]) -> int:
     build_type_n = {None: 0, EntityType.GUNNER: 1, EntityType.SENTINEL: 2, EntityType.LAUNCHER: 3, EntityType.HARVESTER: 4, EntityType.BARRIER: 5}[build_type]
@@ -189,8 +197,15 @@ class Player:
         self.follow_path: Direction|None = None
         
         self.bots_made = 0
+        self.builder_positions: list[Position|None] = [None, None, None]
+        self.build_orders_made: list[tuple[Position, int]] = []
+
+        self.own_core_tiles = []
+        self.opp_core_tiles = []
+        self.opp_core_bottom_right = None
 
     def run(self, ct: Controller) -> None:
+        print(f"{self.opp_core_tiles=}")
         etype = ct.get_entity_type()
         if etype == EntityType.CORE:
             self._run_core(ct)
@@ -206,7 +221,8 @@ class Player:
         for tile in ct.get_nearby_tiles():
             ENV_MAP.set_environment_at(tile, ct.get_tile_env(tile))
             ct.draw_indicator_dot(tile, 0, 255, 0)
-
+            if ct.get_tile_building_id(tile) and ct.get_tile_building_id(tile) == ct.get_id():
+                self.own_core_tiles.append(tile)
         ENV_MAP.update_conveyor_distance_grid()
             
     def _run_core(self, ct: Controller) -> None:
@@ -216,23 +232,52 @@ class Player:
         for i in range(0,min(3,self.bots_made)):
             print(f"Reading {i=}")
             scout_slot = 14 - 4*i
-            read_stored_scout(scout_slot, ENV_MAP, ct)
+            self.builder_positions[i] = read_stored_scout(scout_slot, ENV_MAP, ct)
 
         ENV_MAP.update_conveyor_distance_grid()
+        if ENV_MAP.known_symmetry is None:
+            if ENV_MAP.discover_symmetry():
+                ENV_MAP.deduce_opp_core()
+                self.opp_core_tiles = ENV_MAP.opp_core
+                self.opp_core_bottom_right = max(self.opp_core_tiles, key=lambda tile: tile.x+tile.y)
 
-        for i in range(0,min(3,self.bots_made+1)): #We can plan for the next bot
-            print(f"Planning {i=}")
+        print(f"{ENV_MAP.known_symmetry=}")
+
+        for i in range(0,3-len(self.build_orders_made)):
+            if not ENV_MAP.unplanned_ore: break
+            possible, go_to, build_direction, conveyor_path = ENV_MAP.plan_easiest_harvester()
+            if not possible:
+                print(f"FAILED {go_to}")
+            else:
+                print(f"PLAN MADE {go_to=}")
+                build_order_number = encode_build_order(go_to, EntityType.HARVESTER, build_direction,
+                                                        conveyor_path)
+                self.build_orders_made.append((go_to,build_order_number))
+                for ticket in self.build_orders_made:
+                    if ticket is not None: ct.draw_indicator_dot(ticket[0], 255, 0,0)
+
+        for i in range(0,min(3,self.bots_made+1)):#Plan also the new bot
             order_slot = 15 - 4*i
-            if ct.read_store(order_slot) == 0 and ENV_MAP.unplanned_ore: #Need order
-                possible, go_to, build_direction, conveyor_path = ENV_MAP.plan_easiest_harvester()
-                if not possible:
-                    print(f"FAILED {go_to}")
-                else:
-                    print("PLAN MADE")
-                    build_order_number = encode_build_order(go_to, EntityType.HARVESTER, build_direction,
-                                                            conveyor_path)
-                    print(f"{build_order_number=}")
-                    ct.write_store(order_slot, build_order_number)
+            if ct.read_store(order_slot) == 0:  # Need order
+                bot_pos = self.builder_positions[i] if self.builder_positions[i] else ct.get_position() #core position
+                dist = 63
+                best_ticket = None
+                for ticket in self.build_orders_made:
+                    ticket_distance = ticket[0].distance_squared(bot_pos)
+                    if ticket_distance < dist:
+                        dist = ticket_distance
+                        best_ticket = ticket
+                if best_ticket:
+                    print(f"Assigning builder_bot {i + 1}: {best_ticket[0]}")
+                    ct.write_store(order_slot, best_ticket[1])
+                    if i == self.bots_made:
+                        print(f"Spawn builder_bot")
+                        for tile in sorted(ct.get_nearby_tiles(dist_sq=2), key=lambda tile: tile.distance_squared(best_ticket[0])):
+                            if ct.can_spawn(tile):
+                                ct.spawn_builder(tile)
+                                self.bots_made += 1
+                                break
+                    self.build_orders_made.remove(best_ticket)
 
         if self.bots_made < 4:
             for pos in ct.get_nearby_tiles(dist_sq=2):
@@ -241,31 +286,78 @@ class Player:
                     self.bots_made += 1
                     break
 
-        ct.write_store(SLOT_GAME_DATA,encode_game_data(self.bots_made))
+        ct.write_store(SLOT_GAME_DATA,encode_game_data(self.bots_made, self.opp_core_bottom_right))
+
+    def _generate_move_path(self, target: Position, ct: Controller) -> Direction:
+            bot_pos = ct.get_position()
+            visible_tiles = ct.get_nearby_tiles()
+            opened = sorted([tile for tile in adjacent_tiles(bot_pos) if tile in visible_tiles and ct.is_tile_passable(tile)], key=lambda tile: tile.distance_squared(target), reverse=True)
+            parents = {}
+            for tile in opened: parents[tile] = bot_pos
+            path = []
+
+            while opened:
+                active_tile = opened.pop()
+                print(f"{active_tile=}")
+                neighbors = [tile for tile in adjacent_tiles(active_tile) if tile in visible_tiles and ct.is_tile_passable(tile)]
+                for tile in neighbors:
+                    if tile not in parents and tile not in opened:
+                        parents[tile] = active_tile
+                        opened.append(tile)
+                if target in parents:
+                    tile = target
+                    while tile in parents:
+                        path.append(tile)
+                        tile = parents[tile]
+                    print(f"Generated path: {path}")
+                    return bot_pos.cardinal_direction_to(path.pop())
+                opened.sort(key=lambda tile: tile.distance_squared(target), reverse=True)
+            return False
+
+    def _bot_pathfind(self, target: Position, ct:Controller) -> None:
+        visible_tiles = ct.get_nearby_tiles()
+
+        if target not in visible_tiles:
+            target = min(visible_tiles, key=lambda tile: tile.distance_squared(target) if ct.is_tile_passable(tile) else 63)
+        print(f"Pathfind: {target=}")
+        if not ct.is_tile_passable(target):
+            pass # TODO handle this
+        suggested_move = self._generate_move_path(target, ct)
+        if not suggested_move:
+            for move in sorted(adjacent_tiles(ct.get_position()), key=lambda tile: tile.distance_squared(self.go_to)):
+                if ct.can_move(ct.get_position().cardinal_direction_to(move)):
+                    suggested_move = move.cardinal_direction_to(move)
+                    break
+
+        if suggested_move:
+            if ct.can_move(suggested_move):
+                ct.move(suggested_move)
+                self.moved_direction = suggested_move
 
 
     def _execute_buildplan(self, ct: Controller):
         bot_position = ct.get_position()
         if self.build_stage == 0:  # Has not yet built first conveyor
-            print(f"STAGE 0")
+            print(f"STAGE 0, {self.go_to=}")
             if bot_position == self.go_to:  # Make any move:
                 for direction in CARDINALS:
                     if ct.can_move(direction):
                         ct.move(direction)
                         self.moved_direction = direction
                         break
+
             elif self.go_to in adjacent_tiles(bot_position):
                 if ct.can_build_conveyor(self.go_to, self.conveyor_path[self.path_index]):
                     ct.build_conveyor(self.go_to, self.conveyor_path[self.path_index])
                     self.path_index += 1
                     self.build_stage = 1
+                else:
+                    blocked_by_id = ct.get_tile_building_id(bot_position.add(self.build_direction))
+                    if blocked_by_id and (ct.get_team() != ct.get_team(blocked_by_id)):
+                        if ct.can_fire(bot_position.add(self.build_direction)):
+                            ct.fire(bot_position.add(self.build_direction))
             else:
-                moves = sorted(adjacent_tiles(bot_position), key=lambda tile: tile.distance_squared(self.go_to))
-                for move in moves:
-                    if ct.can_move(bot_position.cardinal_direction_to(move)):
-                        ct.move(bot_position.cardinal_direction_to(move))  # TODO handle failure
-                        self.moved_direction = bot_position.cardinal_direction_to(move)
-                        break
+                self._bot_pathfind(self.go_to, ct)
 
         elif self.build_stage == 1:  # Has not built harvester
             print(f"STAGE 1")
@@ -278,6 +370,11 @@ class Player:
                 if ct.can_build_harvester(self.go_to.add(self.build_direction)):
                     ct.build_harvester(self.go_to.add(self.build_direction))
                     self.build_stage = 2
+                else:
+                    blocked_by_id = ct.get_tile_building_id(bot_position.add(self.build_direction))
+                    if blocked_by_id and (ct.get_team() != ct.get_team(blocked_by_id)):
+                        if ct.can_fire(bot_position.add(self.build_direction)):
+                            ct.fire(bot_position.add(self.build_direction))
 
         elif self.build_stage == 2:  # Has built harvester and first conveyor
             if len(self.conveyor_path) == self.path_index:
@@ -295,19 +392,36 @@ class Player:
             else:
                 direction_next = self.conveyor_path[self.path_index - 1]
                 next_tile = bot_position.add(direction_next)  # pointed from last built conveyor
-             
+
                 if ct.can_build_conveyor(next_tile, self.conveyor_path[self.path_index]):
                     ct.build_conveyor(next_tile, self.conveyor_path[self.path_index])
                     self.path_index += 1
                     self.follow_path = direction_next
+                    if len(self.conveyor_path) == self.path_index:
+                        print("BUILD COMPLETE")
+                        ct.write_store(self.build_order_slot, 0)
+                        self.build_stage = -1
+                        self.follow_path = None
+                        return True
+                else:
+                    blocked_by_id = ct.get_tile_building_id(bot_position.add(self.build_direction))
+                    if blocked_by_id and (ct.get_team() != ct.get_team(blocked_by_id)):
+                        if ct.can_fire(bot_position.add(self.build_direction)):
+                            ct.fire(bot_position.add(self.build_direction))
 
     def _configure_builder(self, ct: Controller) -> None:
         """The builder finds out who it is from store(game_data), the first 3 bots get scouting slots and build_orders"""
         game_data = parse_game_data(ct)
         self.am_builder_number = game_data[0]
+        discovered_bottom_core = game_data[1]
         if self.am_builder_number < 4:
             self.build_order_slot = 19 - 4 * self.am_builder_number
             self.scout_store_slot = 18 - 4 * self.am_builder_number
+        if self.opp_core_bottom_right is None and discovered_bottom_core != Position(0,0):
+            self.opp_core_bottom_right = game_data[1]
+            for dx in 0, -1:
+                for dy in 0, -1:
+                    self.opp_core_tiles.append(Position(discovered_bottom_core.x + dx, discovered_bottom_core.y + dy))
 
     def _read_build_order(self, ct: Controller) -> None:
         """Reads build-order from ct.store"""
