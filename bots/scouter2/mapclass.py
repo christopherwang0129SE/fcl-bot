@@ -88,10 +88,42 @@ class Map:
                         if len(opened) <= distance: opened.append([])
                         opened[distance].append(tile)
 
+    def _count_harvesters_on_path(self, conveyor_tile: Position) -> int:
+        """Count how many planned harvesters feed into or near a conveyor tile."""
+        count = 0
+        for ore_pos in self.planned_ore:
+            # Check if this ore is adjacent to this conveyor (would feed into it)
+            if conveyor_tile in adjacent_tiles(ore_pos):
+                count += 1
+        return count
+
     def plan_easiest_harvester(self) -> tuple[bool, Position, Direction, list[Direction]]:
         """Finds the unplanned ore that require fewest conveyor to connect and produces a plan to build it
-        moves the ore from unplanned to planned and updates the build_plan grid and conveyor_distance grid"""
-        easiest_build = min(self.unplanned_ore, key=lambda ore_tile: (min([self.get_conveyor_distance_at(adjacent) for adjacent in adjacent_tiles(ore_tile)])))
+        moves the ore from unplanned to planned and updates the build_plan grid and conveyor_distance grid
+        Skips ore if its nearest conveyor already has 4+ harvesters (throughput limit)."""
+        # Find ore with lowest conveyor cost, but skip saturated conveyors
+        best_ore = None
+        best_distance = float('inf')
+
+        for ore_tile in self.unplanned_ore:
+            adjacent_conveyors = [tile for tile in adjacent_tiles(ore_tile) if self.get_environment_at(tile) == Environment.EMPTY]
+            if not adjacent_conveyors:
+                continue
+            nearest_conv = min(adjacent_conveyors, key=lambda tile: self.get_conveyor_distance_at(tile))
+            distance = self.get_conveyor_distance_at(nearest_conv)
+
+            # Skip if conveyor already saturated (4+ harvesters)
+            if self._count_harvesters_on_path(nearest_conv) >= 4:
+                continue
+
+            if distance < best_distance:
+                best_distance = distance
+                best_ore = ore_tile
+
+        if best_ore is None:
+            return False, Position(0, 0), Direction.NORTH, []
+
+        easiest_build = best_ore
         empty_adjacent = [tile for tile in adjacent_tiles(easiest_build) if self.get_environment_at(tile)==Environment.EMPTY]
         if not empty_adjacent:
             return False, easiest_build, Direction.NORTH, []
