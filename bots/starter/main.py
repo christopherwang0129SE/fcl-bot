@@ -556,30 +556,57 @@ class Player:
 
         Priority:
         1. Closest visible ore tile without a harvester on it — go build one
-        2. If economy is established (enough harvesters), head back toward
+        2. Closest scouted ore in local_map (even if not currently visible)
+        3. If economy is established (enough harvesters), head back toward
            the core so we can build gunners for defense
-        3. Ore location shared by a teammate via the store — head that way
-        4. Random map position — pure exploration
+        4. Ore location shared by a teammate via the store — head that way
+        5. Unscouted frontier (for systematic exploration)
+        6. Random map position — fallback exploration
         """
         pos = ct.get_position()
 
-        # 1. Scan visible tiles for the nearest uncovered ore
-        best_ore = None
-        best_dist = float("inf")
-        for tile in ct.get_nearby_tiles():
+        # 1. Scan visible tiles for the nearest uncovered ore, targeting an adjacent empty tile
+        best_ore_adj = None
+        best_ore_dist = float("inf")
+        nearby = set(ct.get_nearby_tiles())
+        for tile in nearby:
             if ct.get_tile_env(tile) != Environment.ORE_TITANIUM:
                 continue
             # Skip ore that already has a building (harvester or otherwise) on it
             if ct.get_tile_building_id(tile) is not None:
                 continue
-            d = pos.distance_squared(tile)
-            if d < best_dist:
-                best_dist = d
-                best_ore = tile
-        if best_ore is not None:
-            return best_ore
+            # Find an adjacent empty tile to stand on while building (only check visible tiles)
+            for d in CARDINALS:
+                adj = tile.add(d)
+                if adj in nearby and ct.is_tile_empty(adj):
+                    dist = pos.distance_squared(adj)
+                    if dist < best_ore_dist:
+                        best_ore_dist = dist
+                        best_ore_adj = adj
+        if best_ore_adj is not None:
+            return best_ore_adj
 
-        # 2. Once we have enough harvesters, head back to the core so we can
+        # 2. Scan local_map for scouted ore (even if out of visibility range), targeting adjacent empty tile
+        if self.local_map is not None:
+            best_scouted_adj = None
+            best_scouted_dist = float("inf")
+            for y in range(self.local_map.height):
+                for x in range(self.local_map.width):
+                    tile = Position(x, y)
+                    if self.local_map.get_environment_at(tile) == Environment.ORE_TITANIUM:
+                        # Find an adjacent tile to stand on (prefer already-scouted empty tiles)
+                        for d in CARDINALS:
+                            adj = tile.add(d)
+                            if (0 <= adj.x < self.local_map.width and 0 <= adj.y < self.local_map.height and
+                                self.local_map.get_environment_at(adj) in (0, Environment.EMPTY)):
+                                dist = pos.distance_squared(adj)
+                                if dist < best_scouted_dist:
+                                    best_scouted_dist = dist
+                                    best_scouted_adj = adj
+            if best_scouted_adj is not None:
+                return best_scouted_adj
+
+        # 3. Once we have enough harvesters, head back to the core so we can
         #    build gunners nearby.  _try_build_gunner requires being within
         #    distance² 18 of the core, so we navigate there.
         harvester_count = ct.read_store(SLOT_HARVESTER_COUNT)
@@ -587,12 +614,18 @@ class Player:
             if pos.distance_squared(self.core_pos) > 8:
                 return self.core_pos
 
-        # 3. Check the store for an ore location shared by a teammate
+        # 4. Check the store for an ore location shared by a teammate
         shared = unpack_pos(ct.read_store(SLOT_ORE_LOCATION))
         if shared is not None and pos.distance_squared(shared) > 4:
             return shared
 
-        # 4. No known ore — pick a random position to explore
+        # 5. Seek unscouted frontier (for systematic exploration)
+        if self.local_map is not None:
+            frontier = self.local_map.get_unscouted_near(pos)
+            if frontier is not None:
+                return frontier
+
+        # 6. No known ore — pick a random position to explore
         w, h = ct.get_map_width(), ct.get_map_height()
         return Position(random.randrange(w), random.randrange(h))
 
