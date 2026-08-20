@@ -33,7 +33,8 @@ def bfs_path(map_obj: Map, start: Position, goal: Position, max_nodes: int = 100
             if not (0 <= next_pos.x < map_obj.width and 0 <= next_pos.y < map_obj.height):
                 continue
             # Treat WALL as blocked, everything else (including unscouted 0) as passable
-            if map_obj.terrain_grid[next_pos.y][next_pos.x] == Environment.WALL:
+            env = map_obj.environment_grid[next_pos.y][next_pos.x]
+            if env == Environment.WALL:
                 continue
 
             visited.add(next_pos)

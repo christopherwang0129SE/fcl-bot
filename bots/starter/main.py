@@ -193,20 +193,21 @@ class Player:
         """
         pos = ct.get_position()
 
-        # Initialize local map on first run
-        if self.local_map is None:
-            self.local_map = Map()
-            self.local_map.configure(ct.get_map_width(), ct.get_map_height())
-
-        # Update local map from nearby visible tiles
-        for tile in ct.get_nearby_tiles():
-            env = ct.get_tile_env(tile)
-            self.local_map.set_environment_at(tile, env)
-
         # On our first turn, read the core's position from the store.
         # We cache it so we don't have to read every round.
         if self.core_pos is None:
             self._read_core_pos(ct)
+
+        # Initialize local map on first run (needs core_pos)
+        if self.local_map is None and self.core_pos is not None:
+            self.local_map = Map()
+            self.local_map.configure(ct.get_map_width(), ct.get_map_height(), self.core_pos)
+
+        # Update local map from nearby visible tiles
+        if self.local_map is not None:
+            for tile in ct.get_nearby_tiles():
+                env = ct.get_tile_env(tile)
+                self.local_map.set_environment_at(tile, env)
 
         # Stuck detection: if we haven't moved in 3 rounds, we'll pick a new
         # target in _move_toward_target to avoid getting permanently stuck.
@@ -493,7 +494,7 @@ class Player:
         self.target_age += 1
 
         # If target changed or we don't have a path, compute one via BFS
-        if not self.path or (len(self.path) > 0 and self.path[0] is None):
+        if self.local_map is not None and (not self.path or (len(self.path) > 0 and self.path[0] is None)):
             self.path = bfs_path(self.local_map, pos, self.target, max_nodes=500)
 
         # Follow the path if we have one
