@@ -42,6 +42,7 @@ class Map:
         self.opp_core: list[Position] = None
         self.unplanned_ore: set[Position] = set()
         self.planned_ore: set[Position] = set()
+        self.env_dirty = True
 
     def configure(self, width: int, height: int, core_pos: Position) -> None:
         """Sets the map as configured and creates a grid of Zeroes to represent unscouted terrain"""
@@ -62,6 +63,7 @@ class Map:
                 self.buildplan_grid[core_pos.y + dy][core_pos.x + dx] = 16
 
     def update_conveyor_distance_grid(self):
+        self.env_dirty = False
         opened: list[list[Position]] = [[]]
         visited: set[Position] = set()
         for core_tile in self.own_core:
@@ -195,6 +197,8 @@ class Map:
     def set_environment_at(self, pos: Position, env: Environment) -> None:
         """Sets the specified position if valid, else does nothing"""
         if (not self.configured) or pos.x < 0 or pos.x >= self.width or pos.y < 0 or pos.y >= self.height: return
+        if self.environment_grid[pos.y][pos.x] == 0 and env != 0:
+            self.env_dirty = True
         self.environment_grid[pos.y][pos.x] = env
         if env == Environment.ORE_TITANIUM and pos not in self.planned_ore: self.unplanned_ore.add(pos)
 
