@@ -156,6 +156,7 @@ class Map:
         """Sets the specified position if valid, else does nothing"""
         if (not self.configured) or pos.x < 0 or pos.x >= self.width or pos.y < 0 or pos.y >= self.height: return
         if pos in self.own_core: return
+        if entity_n == 8 and pos not in self.opp_core: self.opp_core.append(pos)
         self.entity_grid[pos.y][pos.x] = entity_n
 
     def get_conveyor_distance_at(self, pos: Position) -> int:
@@ -207,10 +208,27 @@ class Map:
                             return False
         return True
 
+    def test_for_symmetry_by_cores(self, symmetry_kind: int) -> bool:
+        """Returns TRUE if the known cores supports the specified symmetry kind"""
+        if len(self.own_core) == 0 or len(self.opp_core) == 0: return True
+        if symmetry_kind == SYMMETRY_HORIZONTAL:
+            for core_tile in self.opp_core:
+                if Position(self.width - core_tile.x -1, core_tile.y) not in self.own_core: return False
+
+        if symmetry_kind == SYMMETRY_VERTICAL:
+            for core_tile in self.opp_core:
+                if Position(core_tile.x, self.height -core_tile.y-1) not in self.own_core: return False
+
+        if symmetry_kind == SYMMETRY_ROTATIONAL:
+            for core_tile in self.opp_core:
+                if Position(self.width - core_tile.x - 1, self.height - core_tile.y - 1) not in self.own_core: return False
+        return True
+
     def discover_symmetry(self) -> bool:
         possible = []
         for symmetry_kind in [SYMMETRY_ROTATIONAL, SYMMETRY_HORIZONTAL, SYMMETRY_VERTICAL]:
-            if self.test_for_symmetry_kind(symmetry_kind): possible.append(symmetry_kind)
+            if self.test_for_symmetry_kind(symmetry_kind) and self.test_for_symmetry_by_cores(symmetry_kind):
+                possible.append(symmetry_kind)
         if len(possible) == 1:
             self.known_symmetry = possible[0]
             return True
@@ -226,6 +244,10 @@ class Map:
         elif self.known_symmetry == SYMMETRY_ROTATIONAL:
             for tile in self.own_core:
                 self.opp_core.append(Position(self.width - tile.x -1, self.height - tile.y -1))
+
+
+
+
 
 if __name__ == '__main__':
     width, height = 18,6
@@ -259,6 +281,8 @@ if __name__ == '__main__':
     print(e_map.conveyor_str())
     print("Environment".center(width * 2 - 1, '-'))
     print(e_map.environment_str())
+
+    e_map.opp_core.append(Position(0,height-1))
 
     print(f"ROTATIONAL: {e_map.test_for_symmetry_kind(SYMMETRY_ROTATIONAL)}")
     print(f"HORIZONTAL: {e_map.test_for_symmetry_kind(SYMMETRY_HORIZONTAL)}")
