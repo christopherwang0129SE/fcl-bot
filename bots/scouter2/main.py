@@ -3,6 +3,7 @@ import random
 from fcode import Controller, Team, EntityType, Environment, Direction, Position, GameError
 
 from mapclass import Map
+from pathfind import bfs_path
 
 # Builder bots move only in the four cardinal directions.
 CARDINALS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
@@ -270,7 +271,7 @@ class Player:
         self.build_direction: Direction|None = None
         self.build_type_n: int = 0
         self.follow_path: Direction|None = None
-        
+
         self.bots_made = 0
         self.ammo_needed = 20
         self.builder_positions: list[Position|None] = [None, None, None]
@@ -279,6 +280,11 @@ class Player:
         self.own_core_tiles = []
         self.opp_core_tiles = []
         self.opp_core_bottom_right = None
+
+        # Pathfinding state
+        self.local_map: Map | None = None
+        self.current_target: Position | None = None
+        self.path: list[Direction] | None = None
 
     def run(self, ct: Controller) -> None:
 
@@ -445,25 +451,28 @@ class Player:
                 opened.sort(key=lambda tile: tile.distance_squared(target), reverse=True)
             return False
 
-    def _bot_pathfind(self, target: Position, ct:Controller) -> None:
-        visible_tiles = ct.get_nearby_tiles()
+    def _bot_pathfind(self, target: Position, ct: Controller) -> None:
+        """Navigate toward target using BFS pathfinding with greedy fallback."""
+        pos = ct.get_position()
 
-        if target not in visible_tiles:
-            target = min(visible_tiles, key=lambda tile: tile.distance_squared(target) if ct.is_tile_passable(tile) else 2047)
-        print(f"Pathfind: {target=}")
-        if not ct.is_tile_passable(target):
-            pass # TODO handle this
-        suggested_move = self._generate_move_path(target, ct)
-        if not suggested_move:
-            print("Pathfinding failed")
-            options = [tile for tile in adjacent_tiles(ct.get_position()) if ct.can_move(ct.get_position().cardinal_direction_to(tile))]
-            print(f"{options=}")
-            if options: suggested_move = ct.get_position().cardinal_direction_to(min(options, key=lambda tile: tile.distance_squared(target)))
+        # If target changed, recompute path via BFS
+        if target != self.current_target or not self.path:
+            self.current_target = target
+            self.path = bfs_path(self.local_map, pos, target, max_nodes=500)
 
-        if suggested_move:
-            if ct.can_move(suggested_move):
-                ct.move(suggested_move)
-                self.moved_direction = suggested_move
+        # Follow the path if we have one
+        direction = None
+        if self.path:
+            direction = self.path.pop(0)
+
+        # Fallback: greedy cardinal step if no path found
+        if direction is None and target and target != pos:
+            direction = pos.cardinal_direction_to(target)
+
+        # Try to move
+        if direction and direction != Direction.CENTRE and ct.can_move(direction):
+            ct.move(direction)
+            self.moved_direction = direction
 
 
     def _execute_buildplan(self, ct: Controller):
@@ -637,6 +646,16 @@ class Player:
     def _run_builder(self, ct: Controller) -> None:
         self.moved_direction = None
         if self.am_builder_number < 0: self._configure_builder(ct)
+
+        # Initialize local map on first run
+        if self.local_map is None:
+            self.local_map = Map()
+            self.local_map.configure(ct.get_map_width(), ct.get_map_height(), ct.get_position())
+
+        # Update local map from nearby visible tiles
+        for tile in ct.get_nearby_tiles():
+            env = ct.get_tile_env(tile)
+            self.local_map.set_environment_at(tile, env)
 
         if self.build_stage < 0 and self.build_order_slot > 0: #Has no build order, and wants one
             if ct.read_store(self.build_order_slot) > 0:
