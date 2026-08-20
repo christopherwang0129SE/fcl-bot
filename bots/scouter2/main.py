@@ -477,6 +477,13 @@ class Player:
 
     def _execute_buildplan(self, ct: Controller):
         bot_position = ct.get_position()
+
+        # Repair damaged friendly buildings if any nearby (high priority)
+        for tile in adjacent_tiles(bot_position):
+            if ct.can_heal(tile):
+                ct.heal(tile)
+                return  # Used action cooldown, skip rest of plan this turn
+
         if self.build_stage == 0 and len(self.conveyor_path) == 0: self.build_stage = 1
         if self.build_stage == 0:  # Has not yet built first conveyor
             print(f"STAGE 0, {self.go_to=}")
