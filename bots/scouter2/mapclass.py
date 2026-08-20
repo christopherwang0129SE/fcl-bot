@@ -92,7 +92,10 @@ class Map:
         """Finds the unplanned ore that require fewest conveyor to connect and produces a plan to build it
         moves the ore from unplanned to planned and updates the build_plan grid and conveyor_distance grid"""
         easiest_build = min(self.unplanned_ore, key=lambda ore_tile: (min([self.get_conveyor_distance_at(adjacent) for adjacent in adjacent_tiles(ore_tile)])))
-        first_conveyor = min([tile for tile in adjacent_tiles(easiest_build) if self.get_environment_at(tile)==Environment.EMPTY], key=lambda tile: self.get_conveyor_distance_at(tile))
+        empty_adjacent = [tile for tile in adjacent_tiles(easiest_build) if self.get_environment_at(tile)==Environment.EMPTY]
+        if not empty_adjacent:
+            return False, easiest_build, Direction.NORTH, []
+        first_conveyor = min(empty_adjacent, key=lambda tile: self.get_conveyor_distance_at(tile))
         build_direction = first_conveyor.cardinal_direction_to(easiest_build)
 
         active_conveyor = first_conveyor
@@ -175,13 +178,13 @@ class Map:
         for dx in range(10):
             for dy in range(dx+1):
                 #print(f"DX: {dx}, DY: {dy}")
-                if self.get_environment_at(Position(bot_pos.x + dx,bot_pos.y+dy)) is 0:
+                if self.get_environment_at(Position(bot_pos.x + dx,bot_pos.y+dy)) == 0:
                     return Position(bot_pos.x + dx,bot_pos.y + dy)
-                if self.get_environment_at(Position(bot_pos.x - dx,bot_pos.y+dy)) is 0:
+                if self.get_environment_at(Position(bot_pos.x - dx,bot_pos.y+dy)) == 0:
                     return Position(bot_pos.x - dx, bot_pos.y + dy)
-                if self.get_environment_at(Position(bot_pos.x + dx,bot_pos.y-dy)) is 0:
+                if self.get_environment_at(Position(bot_pos.x + dx,bot_pos.y-dy)) == 0:
                     return Position(bot_pos.x + dx, bot_pos.y - dy)
-                if self.get_environment_at(Position(bot_pos.x - dx,bot_pos.y-dy)) is 0:
+                if self.get_environment_at(Position(bot_pos.x - dx,bot_pos.y-dy)) == 0:
                     return Position(bot_pos.x - dx, bot_pos.y - dy)
         return None
 
