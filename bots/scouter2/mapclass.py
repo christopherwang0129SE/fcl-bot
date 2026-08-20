@@ -97,6 +97,22 @@ class Map:
                 count += 1
         return count
 
+    def _is_near_enemy(self, pos: Position, threat_radius_sq: int = 8) -> bool:
+        """Check if a position is near any enemy units (entity codes 8-15 are enemies)."""
+        radius = int(threat_radius_sq**0.5)
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if dx*dx + dy*dy > threat_radius_sq:
+                    continue
+                check_pos = Position(pos.x + dx, pos.y + dy)
+                if not (0 <= check_pos.x < self.width and 0 <= check_pos.y < self.height):
+                    continue
+                entity = self.entity_grid[check_pos.y][check_pos.x]
+                # Entity codes 8-15 represent enemy units
+                if 8 <= entity <= 15:
+                    return True
+        return False
+
     def plan_easiest_harvester(self) -> tuple[bool, Position, Direction, list[Direction]]:
         """Finds the unplanned ore that require fewest conveyor to connect and produces a plan to build it
         moves the ore from unplanned to planned and updates the build_plan grid and conveyor_distance grid
@@ -114,6 +130,10 @@ class Map:
 
             # Skip if conveyor already saturated (4+ harvesters)
             if self._count_harvesters_on_path(nearest_conv) >= 4:
+                continue
+
+            # Skip if ore is too close to enemy units (threat radius 8 tiles)
+            if self._is_near_enemy(ore_tile, threat_radius_sq=8):
                 continue
 
             if distance < best_distance:
