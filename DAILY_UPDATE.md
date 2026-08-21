@@ -250,3 +250,69 @@ for segment in range(5):
 
 ---
 **Status:** All core tutorials (1-4) complete and merged to main. Pushed to origin. Rough drafts validated; ready for competitive testing.
+
+---
+
+# Daily Update — August 21, 2026
+
+## Summary
+Bug-hunt and strategy session on `bots/scouter2` (the live ladder bot). Four real defects
+proven by experiment; nine strategy changes measured; eight of the nine made the bot worse.
+Full write-up with all evidence and tables:
+https://claude.ai/code/artifact/d7262cab-eb7e-452a-a24c-c7da7e29972a
+
+## Shipped (v4, active)
+✅ Core was burning 9.2ms of its 10ms turn budget on an unconditional full-map BFS every
+   round. Gated behind a dirty flag: avg 3.8ms → 1.6ms, peak 9.2ms → 4.6ms.
+✅ `tile_has_enemy` / `tile_has_friend` checked the *building* id when testing whether a
+   *bot* was hostile, so lone enemy builders were invisible to sentinel targeting.
+✅ Removed per-unit-per-round debug print()/draw_indicator_dot() spam and dead code.
+
+## Proven but NOT merged (fix written, in scratch)
+⚠️ **Conveyor routes running due north are silently dropped.** `CARDINALS.index(NORTH)==0`
+   so an all-north route encodes as all-zero bits, and `if (number >> 15) > 0` reads that as
+   "no path". Builder lays no belts, builds the harvester anyway, marks the order done.
+   Evidence: on glacierkeep all 10 chains dead-end at the never-built trunk tile (14,13);
+   **0 titanium mined in 263 turns against a do-nothing opponent**.
+⚠️ **8-tile conveyor cap kills economy on big maps.** 609/609 plans rejected on drakkarfjord,
+   zero harvesters all game. 7 of the 15 pool maps are >=25x25.
+   Both fixes work (0 → 450+ titanium on dead maps) but measured ~50-52% win rate, i.e. no
+   demonstrated gain. Merge them together with the harvester-throughput work, not alone.
+
+## Rejected — real bugs whose fix LOWERS win rate
+❌ `dist = 63` order-assignment radius (squared distance, so ~8 tiles) → 50.0%
+❌ Builders reporting position (0,0) when they don't move → 43.3%
+   Both are load-bearing by accident: they starve builders of mining orders, which pushes
+   them into attacking, which is where this bot's strength currently is.
+
+## Rejected — strategy experiments
+❌ Surplus titanium → gunners 46.7% | → builders+ammo 32.7%
+❌ MIXED (full economy + continuous gunners), submitted as v5 and scrimmaged against real
+   opponents: 1-19 in games vs v4's 3-17, and 21.3% locally. **Reverted to v4.**
+   Cause: copied Pantheon's composition without their economy. They fund 38 gunners with 40
+   harvesters; we funded 5 gunners with 6 harvesters.
+
+## Replay forensics — what #1 actually does (Pantheon vs Pivot, 20x20, 364 turns)
+- Pantheon (won): 40 harvesters, 38 gunners, first gunner turn 22, ~1 per 10 turns all game,
+  median gunner distance 13 from base (pushed FORWARD), median harvester distance 17.
+- Pivot (lost): 23 harvesters, 23 gunners, median gunner distance 8 (kept back).
+- Us: 6-7 harvesters, **0 gunners**. Most common action is healing (115x/game).
+
+## Method notes (save yourself the time)
+- `fcode maps sync` FIRST — the repo's maps/ held an entirely stale pool, none of the 15
+  competition maps were present. The 15 current maps are now committed.
+- 90 games is not enough: one variant read 54.4% at 90 and 50.7% at 150. Use >=150, swap
+  sides on every (map, seed), and run with `--tle 0` so results don't depend on machine load.
+- A do-nothing opponent bot is the fastest way to separate a logic bug from enemy pressure.
+- Match scores are "teamA-teamB" — check which side you are before reading a result.
+- Source files are CRLF; sed patterns anchored with `$` fail silently.
+- Unrated matches: max 5 per 20 min, and always use the *active* submission.
+
+## Next
+1. **Harvester throughput** — only 3 concurrent build orders fit in the 16-slot store, so most
+   builders never get mining work. This is the "coordinate builder roles via more store slots"
+   idea and it is the biggest lever by far.
+2. Merge the conveyor fixes alongside (1), where they should compound.
+3. Dynamic ammo buffer (currently flat 20) — test in isolation.
+4. Builder stall watchdog; systematic exploration (frontier code exists, never called).
+5. More firepower LAST — every firepower change tested worse until the economy can pay for it.
