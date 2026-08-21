@@ -47,12 +47,57 @@ thing in the game; builder bots and turrets are the expensive ones.
 | Surplus titanium → builders + ammo | 150 | 32.7% |
 | 6 order slots + long chains + wide assignment | 150 | 22.7% |
 | Full economy + continuous gunners ("MIXED") | 150 | 21.3% |
+| Sentinel cap (1 per builder) | 150 | 48.0% |
+| Late builder cull (surplus bot self-destructs r150) | 150 | 48.7% |
+| Demand-driven ammo pool | mechanism | rejected — firing rate fell 35% → 14% |
 
 Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 44.0%,
 **4 → baseline**, 5 → 30.7%, 6 → 22.7%. Do not touch it.
 
 **Nothing has beaten the incumbent yet.** The pattern: every change that moves builders
 off attacking, or that adds +20% entities, loses. This bot wins by pressure.
+
+## Turrets: we own more than we can operate
+
+Measured with a probe on `_run_sentinel` counting, per turn, whether a sentinel had a
+live target and whether it could actually fire:
+
+| | Opportunities | Fired | Blocked by ammo |
+| --- | --- | --- | --- |
+| live bot | 1231 | 445 (36%) | 479 |
+| sentinel cap 1/builder | 585 | 271 (46%) | 87 |
+
+**Sentinels are idle ~2/3 of the time and ammo is the dominant blocker.** This is
+structural, not a buffer-tuning problem: 7 sentinels on a 3-round reload demand ~23
+ammo/turn, while passive income is 2.5 Ti/turn and each harvester adds 2.5. Feeding them
+would need ~9 harvesters; we field 2-5. No buffer size closes a 5x shortfall.
+
+Capping turrets cures the starvation (479 → 87 blocked) but costs 40% of total shots
+(445 → 271) and scores 48.0%. So the ammo-starved 7th sentinel still earns its +20%
+scale. Do not "fix" this by building fewer turrets.
+
+Two traps when tuning ammo, both hit here:
+- `can_convert_ammo()` is **all-or-nothing** — asking for an unaffordable shortfall
+  converts NOTHING, so a bigger target can leave turrets drier than a small one.
+- A controller sized from ammo *burned* starves itself: during starvation nothing burns,
+  so it reads "no demand" and decays. Treat an empty pool as the demand signal.
+
+## destroy() as a cost-scale lever: measured, not worth it
+
+Scale composition for one team in one game (ragnarok):
+
+| Category | Built | Scale each | Points |
+| --- | --- | --- | --- |
+| conveyors | 4 | +1% | 4 |
+| harvesters | 2 | +5% | 10 |
+| builders + turrets | 11 | +20% | **220** |
+| | | | 334% total |
+
+**94% of cost scale sits in builders and turrets.** Everything `destroy()` could safely
+reclaim (belts, harvesters) is 14 of 234 points — about a 4% discount. The mechanism is
+real and unexploited, but there is almost nothing behind it. Culling the surplus builder
+late (its +20%, kept through the economy phase, released before the turret push) is the
+best available version and tests neutral at 48.7%.
 
 ## Real-opponent scrimmages (the benchmark that actually counts)
 
@@ -113,6 +158,12 @@ mining orders, which pushes them into attacking. Do not "fix" either in isolatio
   as wins when they were losses.
 - **Verify the mechanism before spending a 150-game run.** Expanding the store to 6 order
   slots did not raise harvester count at all — measuring that first saved the run.
+- **The bot calls `random` unseeded, so runs are NOT reproducible** even at a fixed
+  `--seed`. Identical probe invocations gave 73 vs 0 ammo-blocks on the same map. Never
+  trust a single game; aggregate over 20+ before reading a mechanism.
+- **Check the mechanism before spending a 150-game run.** Three times this saved a run:
+  6 store slots did not raise harvester count, reordering heal/siege did not raise
+  sentinel count, and the first ammo controller made firing *worse*.
 - Source files are **CRLF**; `sed` patterns anchored with `$` fail silently.
 
 ## Where the top bots are ahead
