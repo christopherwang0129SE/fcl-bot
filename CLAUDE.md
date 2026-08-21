@@ -51,12 +51,27 @@ thing in the game; builder bots and turrets are the expensive ones.
 | Late builder cull (surplus bot self-destructs r150) | 150 | 48.7% |
 | Demand-driven ammo pool | mechanism | rejected — firing rate fell 35% → 14% |
 | Siege staging fix (stand beside firing tile) | 150 | 38.0% |
+| Raid enemy harvesters/belts in passing | 150 | 32.0% |
+| Turtle: fortify + mine + play the round-1000 tiebreak | 90 | 36.7% |
+| Turtle + all three economy fixes | 90 | **42.2%** |
 
 Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 44.0%,
 **4 → baseline**, 5 → 30.7%, 6 → 22.7%. Do not touch it.
 
-**Nothing has beaten the incumbent yet.** The pattern: every change that moves builders
-off attacking, or that adds +20% entities, loses. This bot wins by pressure.
+**Nothing has beaten the incumbent across 15 changes and ~3,000 games.** The pattern is
+now unambiguous: *any* use of a builder's action other than "walk at the enemy core and
+place a sentinel that bears on it" loses. Mining loses, exploring loses, defending loses,
+healing more loses, raiding their belts loses (32.0% — firing costs the action cooldown,
+so a raiding builder stops advancing and stops sieging), and even *better siege
+positioning* loses (38.0%). Adding +20% entities loses. This bot wins by pressure, and it
+is a sharp local optimum.
+
+**What that implies.** The one positive signal all session was economy fixes inside a
+long game (+5.5 points). Pantheon's shape is 17 harvesters by turn 82 at ~1 belt each,
+funding continuous gunners from turn 22. Our architecture cannot reach that: one harvester
+per build order, three orders, a chain per harvester, and builders whose default job is a
+cross-map march. Closing that gap is a rewrite around a contiguous, fast-expanding
+economy — not a patch to this control flow. Patching has been exhaustively tried.
 
 ## Why the economy plateaus at ~6 harvesters (the deadlock)
 
