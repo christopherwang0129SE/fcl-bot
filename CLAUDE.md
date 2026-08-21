@@ -7,6 +7,17 @@ then the **official game/API reference** copied from the Florent docs' AGENTS.md
 
 # Part 1 — Project notes (read this first)
 
+## Start here (new session)
+
+- **Read the measured-results table below before proposing anything.** 15 changes have been
+  tested over ~3,000 games and none beat the incumbent; most "obvious" fixes are in there
+  already, several of them measured *worse*.
+- Reproduce any of it with `experiments/` — `ab.py` is the A/B harness, and every variant
+  is a commented patch script that says why it was tried and what it scored.
+- Full write-up with charts: https://claude.ai/code/artifact/d7262cab-eb7e-452a-a24c-c7da7e29972a
+- Before testing: `source /var/home/student/.venvs/fcode/bin/activate` and `fcode maps sync`.
+- The `origin` remote uses SSH (HTTPS has no credentials here).
+
 ## What is live
 
 - `bots/scouter2` is the **live ladder bot**. `bots/starter` and `bots/scouter` are not maintained.
