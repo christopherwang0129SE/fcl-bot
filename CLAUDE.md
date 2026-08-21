@@ -99,6 +99,41 @@ live bot mines 9,860 Ti — the capability is there, the time is not.
 Corollary: the economy fixes and the survival strategy are only worth testing
 *together*. Separately they each look like losses.
 
+## The turtle experiment (drastic playstyle change) — 42.2%
+
+Tried abandoning the rush entirely: builders keep mining, order-less builders come
+home, fortify with barriers (10 HP/Ti vs healing's 4, +1% scale vs a turret's +20%)
+and play for the round-1000 tiebreak, which we had never once contested.
+
+It works mechanically — games reach round 1000 instead of dying at turn 85, and
+mining goes from ~400 to 9,880 — but it does not win:
+
+| Variant | Win rate |
+| --- | --- |
+| turtle alone | 36.7% |
+| **turtle + all three economy fixes** | **42.2%** |
+| turtle + endgame banking | worse (ragnarok 1-5 → 0-6) |
+| turtle + proactive sentinel garrison | no better; still dies turn 53–98 |
+
+The +5.5 points from adding the economy fixes is the **only direct evidence all
+session that those fixes are worth anything** — they help once games last long
+enough for economy to compound, exactly as the game-length theory predicts.
+
+Results are strongly bimodal: drakkarfjord 6-0, glacierkeep 5-1, valkyrie 5-1
+(all maps where the *opponent* mines zero because of the conveyor bug), against
+auroraveil 0-6, archipelago 0-6, frostgate 1-5.
+
+**Why it fails:** it dies. On auroraveil all six games ended core_destroyed between
+turn 65 and 126. Neither reactive barriers nor a proactive sentinel garrison stopped
+our own rusher. Pantheon survives long games because 38 gunners hold the line; a
+turtle with 2-4 sentinels cannot, and it cannot afford more without an economy that
+needs the time the defence was supposed to buy.
+
+Also learned: on maps where both sides mine the same total (ragnarok, 4,980 each) the
+match falls through to *titanium stored*, and the turtle structurally loses that —
+it spends its bank on barriers. Endgame banking did not recover it; the margins are
+~2% and the turtle simply spends more.
+
 ## Turrets: we own more than we can operate
 
 Measured with a probe on `_run_sentinel` counting, per turn, whether a sentinel had a
