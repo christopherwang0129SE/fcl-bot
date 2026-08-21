@@ -50,6 +50,7 @@ thing in the game; builder bots and turrets are the expensive ones.
 | Sentinel cap (1 per builder) | 150 | 48.0% |
 | Late builder cull (surplus bot self-destructs r150) | 150 | 48.7% |
 | Demand-driven ammo pool | mechanism | rejected — firing rate fell 35% → 14% |
+| Siege staging fix (stand beside firing tile) | 150 | 38.0% |
 
 Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 44.0%,
 **4 → baseline**, 5 → 30.7%, 6 → 22.7%. Do not touch it.
@@ -98,6 +99,22 @@ reclaim (belts, harvesters) is 14 of 234 points — about a 4% discount. The mec
 real and unexploited, but there is almost nothing behind it. Culling the surplus builder
 late (its +20%, kept through the economy phase, released before the turret push) is the
 best available version and tests neutral at 48.7%.
+
+## The siege is limited by money, not positioning
+
+A real off-by-one exists in staging: `tiles_to_attack_core_ct_mode()` returns tiles a
+sentinel could fire *from*, and the builder paths **onto** one — but builders may only
+build on an orthogonally adjacent tile, so it parks on the good square and inspects
+neighbours that do not bear on the core. Across 347 siege turns on ragnarok: 131 had a
+buildable adjacent tile, 173 had a bearing tile, only **5** had the same tile do both.
+
+But the bot converts ~100% of those rare chances (5 chances → 5 sentinels). The binding
+constraint is money: a sentinel costs 58–105 Ti at our cost scale and we can afford one
+only ~66% of the time. Fixing the off-by-one scores **38.0%** — worse, because chasing
+stand-beside tiles scatters builders off the approach.
+
+**Launchers are ruled out.** A launcher can only pick up an *adjacent* builder bot, and
+enemy builders appear inside our core's vision 0–5 times per game (never on midgard).
 
 ## Real-opponent scrimmages (the benchmark that actually counts)
 
