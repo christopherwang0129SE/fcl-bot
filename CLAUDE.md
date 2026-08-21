@@ -48,8 +48,33 @@ thing in the game; builder bots and turrets are the expensive ones.
 | 6 order slots + long chains + wide assignment | 150 | 22.7% |
 | Full economy + continuous gunners ("MIXED") | 150 | 21.3% |
 
+Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 44.0%,
+**4 → baseline**, 5 → 30.7%, 6 → 22.7%. Do not touch it.
+
 **Nothing has beaten the incumbent yet.** The pattern: every change that moves builders
 off attacking, or that adds +20% entities, loses. This bot wins by pressure.
+
+## Real-opponent scrimmages (the benchmark that actually counts)
+
+Unrated scrimmage, best-of-5, same five opponents (Pantheon #1, Pivot #2, Lorem Ipsum #5,
+Bean counters #9, OopsGotYourElo):
+
+| Submission | Games | Matches |
+| --- | --- | --- |
+| **v4 (live)** | **6-19** | 1W-4L |
+| v5 "MIXED" (economy + continuous gunners) | 1-19 | 0W-4L |
+| v6 (conveyor fix + threat ammo + exception guard) | **1-24** | 0W-5L |
+
+**The mirror-bias excuse does not hold.** It was tempting to argue that mirror matches
+hide the conveyor bug — on glacierkeep/drakkarfjord/auroraveil both sides mine zero, so
+the fix scores ~50% against a copy of itself. The prediction was that it would shine
+against opponents with working economies. It did the opposite: 1-24. Fixing the bug still
+makes the bot worse in real play. Mirror A/B and real opponents have agreed every time
+they were both measured.
+
+**Scrimmaging a candidate costs rating.** Unrated matches need the candidate *activated*,
+which means ladder matches use it too. v6 was live ~40 minutes and cost ~18 rating
+(1560 → 1542, #41 → #44). Budget for that before testing, and revert promptly.
 
 ## Two real bugs whose fixes make it WORSE
 
