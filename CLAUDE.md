@@ -58,6 +58,47 @@ Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 4
 **Nothing has beaten the incumbent yet.** The pattern: every change that moves builders
 off attacking, or that adds +20% entities, loses. This bot wins by pressure.
 
+## Why the economy plateaus at ~6 harvesters (the deadlock)
+
+Diagnosed by running a 1000-round game and printing the core's own state every
+150 rounds. From round ~175 to round 925, on midgard (30x30), the live bot sits at:
+
+    scouted=452/900   unplanned_ore=7   planned=6   queued_tickets=0
+    builder_positions=[(0,0), (0,0), (0,0)]   titanium=6293 and climbing
+
+It **knows about 7 unmined ore tiles, has thousands of titanium banked, and builds
+nothing for 900 rounds.** Three bugs interlock to cause it:
+
+1. A builder that does not move writes 0 to its scout slot → decodes to
+   `Position(0, 0)`, so the core records every builder as standing on the map origin.
+2. `dist = 63` is compared against `distance_squared`, so assignment is capped at
+   ~8 tiles — of (0,0), a corner the builders are nowhere near. Nothing is ever
+   assigned.
+3. The 8-tile conveyor cap makes `plan_easiest_harvester` fail for the remaining
+   ore, so `queued_tickets` stays 0.
+
+Each of these was fixed individually earlier and each **lost** (43.3%, 50.0%,
+50–52%). That is not a contradiction — see below.
+
+## Game length is the hidden variable
+
+Our games end at turn ~85 by core destruction; the Pantheon-vs-Pivot replay ran 364
+turns. Economy compounds with time, so in an 85-turn game a harvester barely repays
+its own cost and every titanium spent mining is titanium not spent on pressure.
+
+| | harvesters | game length | lifetime income |
+| --- | --- | --- | --- |
+| us | 7 | 85 turns | ~1,500 Ti |
+| Pantheon | 40 | 364 turns | ~36,400 Ti |
+
+That is a 25x gap, and only ~6x of it is harvester count. **The rest is that we die
+early.** This is why every economy fix measured badly: they were tested inside a
+game length where economy cannot pay. Alone on an empty map for 1000 rounds the
+live bot mines 9,860 Ti — the capability is there, the time is not.
+
+Corollary: the economy fixes and the survival strategy are only worth testing
+*together*. Separately they each look like losses.
+
 ## Turrets: we own more than we can operate
 
 Measured with a probe on `_run_sentinel` counting, per turn, whether a sentinel had a
