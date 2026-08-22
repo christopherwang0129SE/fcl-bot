@@ -638,6 +638,42 @@ against opponents with working economies. It did the opposite: 1-24. Fixing the 
 makes the bot worse in real play. Mirror A/B and real opponents have agreed every time
 they were both measured.
 
+### v8 `robust-ecocap5` (2026-08-22) — the first candidate that holds up
+
+Unrated scrimmages with v8 active. **The informative opponents are the ones in our own
+rating band**, not the top five: against a bot rated 600-800 points above us we lose
+whatever we change, which is most of why the v4/v5/v6 scrimmage tables above look flat.
+Use `fcode ladder --around --json` to find them.
+
+| Band | Record |
+| --- | --- |
+| Our band (#49-#58, ratings 1364-1452) | **29-13 = 69%** |
+| Top tier (Pantheon #5, Pivot #4, Bean counters #2, Lorem Ipsum #10) | 4-16 |
+
+Per-opponent in our band: potatis 5-0, Kings College 5-0, Hugging Farce 5-0, Askar City
+4-1, 1337 3-2, Viktor5776 3-2, Team imeto 1-1, Orizon 2-3, Landers 1-4.
+
+**No game stalled.** All 42 were decided by core destruction inside 208 turns, and we won
+on `longhouse` — the map we are 1-18 on. Previous submissions lost that family on the
+clock. For comparison v4 went 6-19 against the top-tier set and v6 went 1-24; v8 goes
+2-3 against Pantheon, where v4 went 1-4 and v6 went 0-5.
+
+### Against the teammate's `bots/scouter3`
+
+A second new bot landed the same day (economy-focused rewrite, `bots/scouter3`). Ours is
+`bots/scouter2-robust` to avoid the collision. Head to head:
+
+| | Games | Result |
+| --- | --- | --- |
+| `scouter2-robust` vs `scouter3` | 300 | **71.3% / 72.7%** |
+| `scouter3` vs the v4 incumbent | 150 | 48.7% |
+| `scouter3` vs idle, longhouse / yulerune | 12 ea | **12/12 stall on both** |
+
+It mines more than we do (870 vs 770 Ti in a sample game, 45 structures vs 21) and still
+loses, because it carries the same freeze — worse, since it never finishes either stall
+map. The two efforts are complementary, not competing: its economy plus these robustness
+patches is the obvious next bot.
+
 **Scrimmaging a candidate costs rating.** Unrated matches need the candidate *activated*,
 which means ladder matches use it too. v6 was live ~40 minutes and cost ~18 rating
 (1560 → 1542, #41 → #44). Budget for that before testing, and revert promptly.
