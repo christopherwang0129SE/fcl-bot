@@ -658,6 +658,12 @@ on `longhouse` — the map we are 1-18 on. Previous submissions lost that family
 clock. For comparison v4 went 6-19 against the top-tier set and v6 went 1-24; v8 goes
 2-3 against Pantheon, where v4 went 1-4 and v6 went 0-5.
 
+**First rated evidence.** In the first 5 rated ladder matches after activating v8 the
+rating went **1409 -> 1466 (+57)** and the rank **#54 -> #46**, last-10 8W-2L. Five matches
+is not a result — but it is the right instrument, it is free, and it is the one number to
+keep watching. Re-run `experiments/ladder_stats.py` once a few hundred games have
+accumulated and compare against the v4 baseline of 113-187 (37.7%).
+
 ### Against the teammate's `bots/scouter3`
 
 A second new bot landed the same day (economy-focused rewrite, `bots/scouter3`). Ours is
