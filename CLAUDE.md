@@ -20,11 +20,20 @@ then the **official game/API reference** copied from the Florent docs' AGENTS.md
 
 ## What is live
 
-- `bots/scouter2` is the **live ladder bot**. `bots/starter` and `bots/scouter` are not maintained.
-- Submit: `fcode submit bots/scouter2 -n <name>` then `fcode submission activate <version>`.
+- `bots/scouter3` is the **live ladder bot** (submission **v8 `robust-ecocap5`**, activated
+  2026-08-22). It is `scouter2` plus six patch scripts: `patch_mapguard`, `patch_oob`,
+  `patch_blocked`, `patch_siegepick`, `patch_respawn`, `patch_ecocap 5`. Rebuild it from
+  scratch at any time by applying those six to a copy of `bots/scouter2`.
+- `bots/scouter2` is the previous live bot (v4) and the **A/B baseline** every measurement
+  in this file is against. `bots/starter` and `bots/scouter` are not maintained.
+- Submit: `fcode submit <botdir> -n <name>` — note this **auto-activates** the new version,
+  it is not a two-step process any more. `fcode submission activate <version>` reverts.
+- `fcode submit` has no `--json`. `fcode ladder --json` returns only the top 20; use
+  `fcode ladder --around --json` for the teams either side of us, which are the ones worth
+  scrimmaging (against a 2100-rated bot we lose whatever we change).
 - The CLI is not on the default path: `source /var/home/student/.venvs/fcode/bin/activate`.
 - Unrated scrimmages always use the **active** submission, and are rate-limited to
-  **5 per 20 minutes**.
+  **5 per 10 minutes** (the CLI error says 10, not the 20 previously recorded here).
 
 ## Cost scaling dominates everything
 
@@ -78,24 +87,328 @@ thing in the game; builder bots and turrets are the expensive ones.
 | Ammo top-up stepped down instead of all-or-nothing, target 40 | 150 | 45.3% (55.0% at 60 — did **not** replicate) |
 | ...same, target 20 (isolates the step-down alone) | 60 | 41.7% |
 | ...same, target 80 | 60 | 50.0% |
+| Crash guards only (`patch_mapguard` + `patch_oob`) | 150 | 52.7% |
+| Blocked-tile pathfinding + path-step fix (`patch_blocked`) | 300 | 54.3% (54.0 / 54.7) |
+| Robustness bundle (guards + blocked + siegepick + respawn) | 450 | 53.3% (58.0 / 52.7 / 49.3) |
+| Conveyor fix alone (`patch_conveyor`) | 450 | 56.9% (60.0 / 56.7 / 54.0) |
+| **Economy capped at 4 harvester orders** (`patch_ecocap 4`) | **450** | **65.1%** (60.7 / 65.3 / 69.3) |
+| **Economy capped at 5** (`patch_ecocap 5`) | **450** | **69.6%** (68.0 / 70.7 / 70.0) |
+| ...cap 1 / 2 / 3 / 6 / 8 | 150 ea | 27.3% / 51.3% / 57.3% / 60.0% / 52.0% |
+| Robustness + conveyor | 450 | 62.4% (58.7 / 68.0 / 60.7) |
+| **Robustness + economy cap** | **450** | **66.9%** (68.0 / 67.3 / 65.3) |
+| No new harvester orders after round 40 (`patch_ecocap 99 40`) | 150 | 52.0% |
+| Siege-target picking alone (`patch_siegepick`) | 150 | 48.0% |
+| Replace builders that die (`patch_respawn`) | 150 | 48.7% |
+| Drop a build order going nowhere (`patch_giveup`) | 150 | 48.0% |
+| ...crash guards + give-up together | 150 | 43.3% |
+| **Defend with the damage-response builders** (`patch_defend`) | 150 | **35.3%** |
+| Commit to a map symmetry (`patch_symcommit`) | 12/map | rejected — yulerune stalls 8/12 → **12/12** |
 
 Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 44.0%,
 **4 → baseline**, 5 → 30.7%, 6 → 22.7%. Do not touch it.
 
-**Nothing has beaten the incumbent across 22 changes and ~3,800 games.** The pattern is
-now unambiguous: *any* use of a builder's action other than "walk at the enemy core and
-place a sentinel that bears on it" loses. Mining loses, exploring loses, defending loses,
+**No change to *strategy* has ever beaten the incumbent, across 25 changes and ~4,500
+games.** That pattern is unambiguous: *any* use of a builder's action other than "walk at
+the enemy core and place a sentinel that bears on it" loses. Mining loses, exploring
+loses, defending loses (35.3% — measured again this session, in its narrowest form),
 healing more loses, raiding their belts loses (32.0% — firing costs the action cooldown,
 so a raiding builder stops advancing and stops sieging), and even *better siege
 positioning* loses (38.0%). Adding +20% entities loses. This bot wins by pressure, and it
 is a sharp local optimum.
 
-**What that implies.** The one positive signal all session was economy fixes inside a
-long game (+5.5 points). Pantheon's shape is 17 harvesters by turn 82 at ~1 belt each,
-funding continuous gunners from turn 22. Our architecture cannot reach that: one harvester
-per build order, three orders, a chain per harvester, and builders whose default job is a
-cross-map march. Closing that gap is a rewrite around a contiguous, fast-expanding
-economy — not a patch to this control flow. Patching has been exhaustively tried.
+**Robustness is a different axis, and it is not exhausted.** The first changes to beat
+the incumbent on a replicated measurement are not strategy at all — they are fixes for
+builders that stop working: `patch_blocked` at 54.3% over 300 games across two
+independent seed ranges, and the bundle around it at 55.3%. They do not change what a
+builder wants to do; they stop it wandering, freezing or dying to an exception on the way
+to doing it. Every previous session searched the strategy axis, which is why ~3,800 games
+found nothing: the wins were not there.
+
+**What that implies for the economy.** Pantheon's shape is 17 harvesters by turn 82 at ~1
+belt each, funding continuous gunners from turn 22. Our architecture cannot reach that:
+one harvester per build order, three orders, a chain per harvester, and builders whose
+default job is a cross-map march. Closing that gap is a rewrite, not a patch. But note
+that the economy plateau and the freezes share a cause — a builder rattling between two
+tiles for 900 rounds is not mining either — so some of what looked like an economy
+ceiling was builders that had simply stopped.
+
+## What the real ladder says (300 games, `experiments/ladder_stats.py`)
+
+Read-only, costs nothing, and nobody had looked before. Overall **113-187 =
+37.7%**, and the per-map record lines up almost exactly with what the
+do-nothing-opponent audit flags:
+
+| Map | Ladder | What the audit says about it |
+| --- | --- | --- |
+| longhouse | **1-18 (5.3%)** | median 1000 turns vs idle, 8/12 games never end |
+| glacierkeep | 3-20 (13.0%) | mines **0** titanium (all-NORTH conveyor routes dropped) |
+| jotunheim | 3-19 (13.6%) | mines **0** titanium |
+| valkyrie | 2-12 (14.3%) | mines 130 Ti, lowest non-zero on the board |
+| icefloe | 5-17 (22.7%) | — |
+| stavkirke | 15-7 (68.2%) | normal |
+| midgard | 11-6 (64.7%) | normal |
+
+Two more things fall out of it:
+
+- **We are not being rushed down.** Only **12 of 185 losses (6.5%) end before
+  turn 60**. The distribution of our losses:
+
+  | turns | share of losses |
+  | --- | --- |
+  | <60 (rushed) | 6.5% |
+  | 60-99 | 19.5% |
+  | 100-199 | 36.2% |
+  | 200-499 | 24.9% |
+  | 500+ / tiebreak | 13.0% |
+
+  Median turns when we **win**: 87. Median when we **lose**: 154. We win fast and
+  lose slow — 38% of losses run past turn 200. That is the signature of a bot
+  that stops making progress and gets ground down, not one that gets killed early.
+  Anyone proposing defensive play as the fix should look at this table first.
+- **18 losses were decided at the round-1000 tiebreak** (17 on titanium
+  collected, 1 on titanium stored). Those are the stall games.
+
+Note `longhouse` and `jotunheim` are not in the 15-map A/B pool at all, so no
+amount of A/B tuning could ever have seen our two worst maps.
+
+## The mirror A/B is blind to whole classes of defect
+
+Every number in the table above comes from playing the bot against a copy of
+itself. That measures *strategy* well and **cannot measure robustness at all**,
+because any failure both copies share cancels out and reads ~50%.
+
+Measured, not argued:
+
+- **Our bot never kills an enemy builder.** Across 20 mirror games, instrumented
+  for it, the count of enemy builder-bot deaths was **0**. The bot shoots cores
+  and buildings in its way; builders are simply never targeted. So no mirror A/B
+  has ever exercised losing a unit — while real ladder opponents field dozens of
+  forward turrets and do kill them.
+- **Neither side ever builds an obstacle on purpose**, so no mirror game has ever
+  tested what happens when a route is walled.
+- **A crash that kills a unit reads as neutral.** `bridge` raises an `IndexError`
+  out of `Map.configure` on both seeds, killing a builder outright, and 3,800
+  mirror games never surfaced it.
+
+Two lab opponents now exist to apply exactly the pressure the mirror cannot, and
+neither is meant to be good — they are instruments:
+
+| Bot | What it does | What it tests |
+| --- | --- | --- |
+| `experiments/idle` | nothing | economy and pathing without pressure |
+| `experiments/hunter` | forward line of sentinels, prefers builder-bot targets | losing units |
+| `experiments/waller` | rings its own core in barriers | routing through obstacles |
+
+Use `experiments/stall_check.py <bot> <n> [--opp DIR] <maps...>`, which aggregates
+N games per map, because single games are worthless here: the bot calls `random`
+unseeded, and the same map and seed gave **59 and 1000 turns** on consecutive
+runs. A 2-seed reading suggested `patch_symcommit` cut `string` from 530 to 55
+turns; at 12 games per map the same patch was a clear **regression**.
+
+## The builders freeze, and it costs whole games
+
+Diagnosed on `yulerune` against a do-nothing opponent by printing every
+builder's position, stage and cached route every 100 rounds:
+
+    BOT r100 n1 at (7,6) stage=0 target=(10,1) pathlen=5
+    BOT r200 n1 at (7,6) stage=0 target=(10,1) pathlen=3
+    BOT r600 n1 at (7,6) stage=0 target=(10,1) pathlen=9
+
+Three of four builders sit in `build_stage == 0` from round 100 to 600+, each
+oscillating between two tiles, each holding a build order whose `go_to` it never
+reaches. The map stops being scouted at round 100 and the game runs to the
+round-1000 tiebreak. Base rate on that map: **median 1000 turns, 8 of 12 games
+never end**. The ladder record on this family of maps is 0-13 (longhouse) and
+1-6 (yulerune) — and `longhouse` is not even in the 15-map A/B pool.
+
+The mechanism is the known path-step bug compounding: `_bot_pathfind` pops a step
+off the cached route whether or not the move happened, so one blocked step
+desyncs the whole route from where the builder actually is, and it walks a plan
+for a position it never reached. Nothing detects this and nothing replans.
+
+There are two ways to fix it — make the builder *reach* the order, or make it
+*drop* the order. CLAUDE.md's own evidence says the second is the one that wins,
+since the first converts a frozen builder into a miner and every measured variant
+that spent builder turns on mining lost. `patch_giveup` drops an order that has
+gone nowhere for 20 rounds; on yulerune it turns 1000-turn stalls into
+core kills at turns 121 / 129 / 155.
+
+Note the detector has to tolerate *oscillation*: the first version required an
+identical position each round and caught almost nothing, because a desynced
+builder does not stand still, it rattles between two tiles. Counting distinct
+tiles over a window catches it.
+
+**There are two different freezes, and they need different fixes.** Tracing
+`longhouse` (ladder record 1-18) shows the other one:
+
+    BOT r100 n1 at (4,7)  stage=-1 target=(19,8) pathlen=32 movecd=1
+    BOT r200 n1 at (7,14) stage=-1 target=(19,9) pathlen=29 movecd=1
+    BOT r300 n1 at (6,13) stage=-1 target=(19,9) pathlen=19 movecd=1
+
+Symmetry is solved here and the enemy core is known at (25,9); the builders are
+not wedged on two tiles, they *wander* the western third of the map for 900
+rounds and the scouted count sticks at 250/504. Builders move on a cooldown, so
+on roughly every other round `can_move` is False — and `_bot_pathfind` pops the
+step anyway. On a 30-step march that discards about half the route, and what is
+left is a plan for tiles the builder never stood on. So:
+
+- **yulerune type** — builder wedged in two tiles holding an order it cannot
+  reach. Fixed by dropping the order (`patch_giveup`) or the siege tile
+  (`patch_siegepick`).
+- **longhouse type** — route decays into noise because steps are spent on
+  cooldown rounds. Only fixed by not spending a step that was not taken
+  (`patch_pathstep`, included in `patch_blocked`).
+
+A third variant of the same family: `_bot_without_orders` picks the *nearest*
+tile from `tiles_to_attack_core_ct_mode()`, which is built from geometry alone
+and happily returns a tile the builder has never seen and that is solid rock.
+BFS finds no route to a WALL, the greedy fallback walks into it, and nothing
+notices. That is `patch_siegepick`.
+
+### What that is worth: 12 games per map against the do-nothing opponent
+
+Median turns to kill, and how many of 12 games never ended at all:
+
+| | longhouse | yulerune | string | yggdrasil | stalls |
+| --- | --- | --- | --- | --- | --- |
+| live bot | 960 (6/12) | 1000 (9/12) | 59 (5/12) | 108 (0/12) | **20/48** |
+| + give up on a stuck order | 754 (3/12) | 122 | 59 | 93 | 3/48 |
+| **+ blocked-tile pathfinding** | **104** | **78** | **51** | **67** | **0/48** |
+| + guards + give-up | 544 | 138 | 58 | 112 | 0/48 |
+| all of the above | 95 | 81 | 51 | 70 | 0/48 |
+
+`patch_blocked` alone removes every stall on the board and takes longhouse — our
+worst ladder map at 1-18 — from a 960-turn median to 104. The path-step half of
+it is doing most of that work; `patch_giveup` fixes yulerune but barely touches
+longhouse, exactly as the two-freeze diagnosis predicts.
+
+### Against the adversarial opponents
+
+Against `hunter` (6 games/map, 6 maps), which shoots builder bots:
+
+| | games ending in a stall | median turns, worst map |
+| --- | --- | --- |
+| live bot | 4/36 | 99 (archipelago) |
+| + replace dead builders | 1/36 | 92 |
+| + **defend** with the damage-response builders | **8/36** | **609** |
+| all robustness fixes | **0/36** | 82 |
+
+Against `waller` (barrier ring), every variant still wins every game, but
+`patch_blocked` gets there faster on all six maps (medians 76→61, 74→68, 76→65,
+48→45, 54→49, 61→57).
+
+## The economy cap: the first change that clearly wins
+
+`patch_ecocap 4` stops the core planning new harvester orders once four have ever
+been issued. It is six lines. Measured against the incumbent over **450 games in
+three independent seed ranges: 60.7% / 65.3% / 69.3%, pooled 65.1%.** With the
+robustness bundle on top: 68.0% / 67.3% / 65.3%, pooled **66.9%**.
+
+Nothing in ~4,000 previous games came close, and unlike the readings this file
+warns about (54.4% at 90 games, 58.0% then 50.0%), this one gets *stronger* on
+each fresh seed range rather than decaying toward 50%.
+
+**Why it works, and why it does not contradict the rest of this file.** The core
+caps *concurrent* build orders at three but keeps minting new ones for as long as
+it knows of unmined ore, so builder-turns drain into mining for the whole match.
+Every earlier attempt to cap mining was made inside `bots/econ`, a rewrite whose
+builders mine as a *behaviour*; capping a behaviour there just meant they found
+different mining to do. Here the cap is on the *number of orders the core ever
+issues*, which is the quantity CLAUDE.md already identified as the real currency:
+builder-turns, not titanium. Past four harvesters, every builder is permanently on
+the siege. This is the same conclusion as "any use of a builder's action other
+than walking at the enemy core loses" — it is that finding applied to the one
+place the incumbent had no limit at all.
+
+Note the round-based form of the same idea is much weaker: no new orders after
+round 40 scores 52.0%. It is the *count* that matters, not the clock.
+
+### The cap has a real optimum, and the curve proves the effect
+
+Sweeping the cap, 150 games each on seeds 1-5, with the promising values
+replicated on seeds 11-15:
+
+| Cap (total harvester orders) | seeds 1-5 | seeds 11-15 | pooled |
+| --- | --- | --- | --- |
+| 1 | 27.3% | — | 27.3% |
+| 2 | 51.3% | 48.7% | 50.0% |
+| 3 | 57.3% | 50.0% | 53.7% |
+| 4 | 60.7% | 65.3% (+69.3% on 21-25) | **65.1%** (450 games) |
+| **5** | **68.0%** | **70.7%** (+70.0% on 21-25) | **69.6%** (450 games) |
+| 6 | 60.0% | — | 60.0% |
+| 8 | 52.0% | — | 52.0% |
+
+A clean inverted U peaking at 5. That shape is itself the strongest evidence the
+effect is real: noise does not produce a monotone rise to a peak and a monotone
+fall away from it, and the two ends are interpretable — at a cap of 1 the bot has
+no economy at all and loses badly (27.3%), at 8 the cap barely binds and the
+result returns to baseline (52.0%).
+
+**Cap 5 is the recommended value.** It now has the same 450 games across three
+independent seed ranges as cap 4, and it is the most stable reading in this file:
+68.0 / 70.7 / 70.0, a spread of under three points where every other promising
+result in this project decayed toward 50% on the second range.
+
+### The bundle, audited on all 46 maps with the time limit ON
+
+`vfinal` = `patch_mapguard` + `patch_oob` + `patch_blocked` + `patch_siegepick`
++ `patch_respawn`:
+
+| | live bot | vfinal |
+| --- | --- | --- |
+| Tracebacks in 92 games | 2 (`bridge`) | **0** |
+| Time-limit messages | 0 | 0 |
+| Maps flagged | 7 | **4** |
+| longhouse | 785 turns | **96** |
+| string | 530 | **48** |
+| yulerune | 1000 | **84** |
+| yggdrasil | 108 | **67** |
+| bridge | 83 + crash | **58** |
+
+The four maps still flagged — drakkarfjord, glacierkeep, jotunheim, showdown —
+are all "mines NOTHING", i.e. the conveyor-encoding bug, not a stall. That is a
+different fix (`patch_conveyor`) and the two are complementary: measured alone,
+the conveyor fix takes glacierkeep from 109 to 80 turns but leaves longhouse and
+yulerune stalling 7/12 and 8/12, exactly as before.
+
+CPU with the fixes in: median 0.3–1.4 ms, max 6.7 ms per builder turn against the
+10 ms limit — the live bot's max is 6.9 ms, so this costs nothing measurable.
+
+**Defending is the one idea here that measurably loses**, and it loses twice
+over: 35.3% in the mirror (where the opponent *is* a rusher, so this is a fair
+test of anti-rush play) and *more* stalls against the hunter than doing nothing,
+because a builder holding station near our core is a builder not ending the game.
+This is the same wall CLAUDE.md's turtle and garrison experiments hit; the narrow
+version — defend only with builders that already exist because the core is being
+hit, leaving the 4-builder siege untouched — does not escape it either.
+
+## Three robustness defects in the live bot
+
+All three are invisible to the mirror and all three match what a teammate
+reported from real games.
+
+- **Dead builders are never replaced.** `self.bots_made` only ever increments and
+  the spawn gate is `if self.bots_made < 4`, so once four builders have *existed*
+  the core will not make another however many are killed. An opponent that kills
+  builders removes them permanently — siege, economy and scouting — while the bank
+  climbs. Death detection is free: `read_stored_scout` already zeroes a builder's
+  scout slot after reading it, so a live builder is exactly one that rewrites its
+  slot. The one gap is that a builder which did not move writes a literal 0;
+  `patch_respawn` writes a nonzero heartbeat that still decodes to `Position(0,0)`
+  with no tiles, so it does **not** quietly fix the load-bearing `Position(0, 0)`
+  bug.
+- **The builders spawned because we are being attacked walk away.** The core does
+  react to a rush (`if ct.get_hp() < ct.get_max_hp() and self.bots_made < 6`) but
+  builders 5 and 6 get no store slots, fall through to `_bot_without_orders`, and
+  march at the *enemy* core. The bot's entire answer to being rushed is to send
+  two more attackers away from the fight. `patch_defend` gives only those builders
+  a defensive job and leaves the 4-builder siege force untouched.
+- **Three unguarded `get_tile_building_id()` calls.** All of the form
+  `ct.get_tile_building_id(bot_position.add(self.build_direction))`, which reaches
+  up to two tiles from `go_to` and lands off the grid for orders planned near an
+  edge — a permanent unit death. Everything else in the bot iterates
+  `get_nearby_tiles()`, which is always in bounds, so these three are the whole
+  exposure. `patch_oob`.
 
 ## Why the economy plateaus at ~6 harvesters (the deadlock)
 
@@ -583,3 +896,13 @@ per-unit-per-round printing is a measurable CPU cost).
   distinguishable from "too expensive" or "tile occupied" without checking each
   yourself. Treating a cooldown refusal as "impossible" makes a builder walk away
   from a site it was one turn from building.
+- **Out of bounds, every `can_*()` returns False but `get_tile_env()` and
+  `get_tile_building_id()` RAISE `GameError`** — and an uncaught exception destroys
+  that unit permanently. So `can_fire(t) and get_tile_building_id(t)` is safe and
+  `get_tile_building_id(t) and can_fire(t)` is a unit-killer. Probed directly
+  (`scratchpad/oob`): `can_heal`, `can_build_*`, `can_destroy`, `can_fire` and
+  `is_tile_passable` all return False; the two getters raise.
+- **Each unit gets its own `Player` instance and it persists for the whole match.**
+  Verified by printing `id(self)`: the core's instance is stable across rounds,
+  which is why `self.bots_made` works — and why a counter that is never decremented
+  stays wrong for the rest of the game.
