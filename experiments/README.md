@@ -13,6 +13,21 @@ this directory is the *how*.
 | `pbdump.py` | Protobuf wire-format walker for `.replay26` — used to decode opponents' builds. |
 | `firepower.sh` | Aggregates sentinel firing-rate / ammo-starvation over many games. |
 | `idle/` | A do-nothing opponent. The single best debugging tool here. |
+| `patch_probe.py` | Makes a bot log every build it makes, one stderr line each. |
+| `probe_stats.py` | Aggregates those over the pool: harvesters by turn N, belts each, titanium. |
+| `patch_econdiag.py` | Dumps each `bots/econ` builder's planner state every N rounds. |
+
+### Gate 1 before gate 2
+
+`probe_stats.py` answers "did the mechanism actually move?" in about a minute,
+against `idle/` so nothing else is in the way. Run it before committing to a
+150-game A/B — three separate runs were saved that way, and the economy rewrite
+was steered by it four times.
+
+```bash
+cp -r ../bots/econ /tmp/cand && python3 patch_probe.py /tmp/cand
+python3 probe_stats.py /tmp/cand --seeds 2 --jobs 10
+```
 
 ### Running an A/B
 
@@ -49,5 +64,13 @@ infrastructure in passing. `patch_lean` sweeps builder count. `patch_sentcap`,
 `patch_ammo`, `patch_ammo2` address turret supply. `patch_roles` widens the store to 6
 build orders. `patch_explore`, `patch_stage`, `patch_standoff`, `patch_siege`,
 `patch_cull`, `patch_cheapbelt`, `patch_noattack` are the rest.
+
+**The economy rewrite.** `../bots/econ` is not a patch but a separate bot: the core
+plans no economy, and each builder greedily extends one shared conveyor network
+(`network.py`). `patch_econsplit` sets how many builders mine and when they give
+up and siege, `patch_reach` caps how far a belt run may go, `patch_ammo3` is the
+ammo top-up rewritten to step down rather than convert nothing, and
+`patch_pathstep` is the movement bug the rewrite uncovered, backported to
+`scouter2` so it can be measured on its own.
 
 Every one of them measured below the incumbent. See `../CLAUDE.md` for the table.

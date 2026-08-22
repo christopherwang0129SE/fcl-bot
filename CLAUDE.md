@@ -65,11 +65,24 @@ thing in the game; builder bots and turrets are the expensive ones.
 | Raid enemy harvesters/belts in passing | 150 | 32.0% |
 | Turtle: fortify + mine + play the round-1000 tiebreak | 90 | 36.7% |
 | Turtle + all three economy fixes | 90 | **42.2%** |
+| **Economy rewrite** (local-greedy, `bots/econ`) | 150 | **10.7%** |
+| ...2 of 4 builders mine | 60 | 28.3% |
+| ...1 of 4 builders mines | 60 | 30.0% |
+| ...all mine, all siege from turn 30 | 60 | 33.3% |
+| ...all mine, all siege from turn 50 | 60 | 36.7% |
+| ...all mine, belt runs capped at 4 / 2 / 0 | 60 ea | 21.7% / 18.3% / 16.7% |
+| ...5 builders, 1 mines (siege force kept at 4) | 60 | 33.3% |
+| ...6 builders, 1 mines / 2 mine | 60 ea | 23.3% / 15.0% |
+| ...detour cap of 5 / 8 tiles on taking a mining job | mechanism | rejected — still 0-2 sentinels |
+| Path-step fix (don't spend a step you didn't move) | 60 | 40.0% |
+| Ammo top-up stepped down instead of all-or-nothing, target 40 | 150 | 45.3% (55.0% at 60 — did **not** replicate) |
+| ...same, target 20 (isolates the step-down alone) | 60 | 41.7% |
+| ...same, target 80 | 60 | 50.0% |
 
 Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 44.0%,
 **4 → baseline**, 5 → 30.7%, 6 → 22.7%. Do not touch it.
 
-**Nothing has beaten the incumbent across 15 changes and ~3,000 games.** The pattern is
+**Nothing has beaten the incumbent across 22 changes and ~3,800 games.** The pattern is
 now unambiguous: *any* use of a builder's action other than "walk at the enemy core and
 place a sentinel that bears on it" loses. Mining loses, exploring loses, defending loses,
 healing more loses, raiding their belts loses (32.0% — firing costs the action cooldown,
@@ -124,6 +137,74 @@ live bot mines 9,860 Ti — the capability is there, the time is not.
 
 Corollary: the economy fixes and the survival strategy are only worth testing
 *together*. Separately they each look like losses.
+
+## The economy rewrite (`bots/econ`) — 10.7%, and why
+
+The architectural rewrite the plateau seemed to call for: the core plans no
+economy at all, and each builder every turn either builds a harvester on
+adjacent ore that touches our conveyor network, lays the one belt that extends
+the network toward the cheapest unclaimed ore, or walks to where it could do
+one of those. This removes the 3-order cap, the per-harvester private chain and
+the store-slot pressure in one go. Builders share the network over the freed
+build-order slots (each publishes the belt it laid that turn, 11 bits, and a
+builder lays at most one belt per turn, so the bandwidth is exactly sufficient),
+and the core broadcasts one known ore tile per turn in the spare bits of slot 0.
+
+**The engine works.** Against the idle bot across the pool, harvesters by turn 80
+went 4.6 → 7.6, titanium collected 962 → 1448/game, and `glacierkeep` and
+`drakkarfjord` — which mine literally zero under the incumbent — mine normally.
+On ore-dense `archipelago` it reaches 32 harvesters at 2.7 belts each.
+
+**It loses anyway, and the sweep is monotone**: every unit of builder time moved
+off the siege costs win rate (10.7% all-mining → 36.7% mining only to turn 50).
+No split, no reach cap and no cutoff round beats the incumbent.
+
+**The measurement that explains it.** Head-to-head against the incumbent on
+midgard, at the turn-72 point where the game actually ends:
+
+| | rewrite | incumbent |
+| --- | --- | --- |
+| Harvesters | 5 | 5 |
+| Conveyors | 15 | 15 |
+| Sentinels | **0** | **7** |
+| Titanium unspent at death | 634 | 28 |
+
+The economies are *identical*. The rewrite's advantage is real but only exists
+in games long enough for it to compound, and a real opponent ends the game
+before that. This is the "game length is the hidden variable" finding confirmed
+from the other side: **fixing the economy does not lengthen the game, so the
+economy never gets paid.** Do not re-derive this by building a better miner.
+
+**The balance point does not exist, and it was looked for properly.** Six
+independent axes, ~20 configurations: what fraction of builders mine, a phase
+switch from mining to sieging at turn N, a cap on belt-run length, a cap on how
+far a builder will *detour* for a job, extra builders on top of an untouched
+4-builder siege force, and spending the proceeds on ammo instead of buildings.
+The best of all of them is 36.7% (mine with everyone until turn 50, then commit
+everything to the siege). Nothing reaches 50%.
+
+The one that looked most promising on paper — keep the siege at its measured
+optimum of 4 and add a 5th builder that only mines — scores 33.3%, barely above
+the 30.7% CLAUDE.md already records for a 5th builder with no economy at all. A
+builder costs +20% cost scale forever and its belts another +1% each, and the
+siege is money-limited, so the extra harvesters mostly pay for the scale
+inflation they themselves caused. A 6th builder is catastrophic (15.0%).
+
+**Why builder-turns, not titanium, are the currency.** The incumbent's economy is
+nearly free: three short build orders executed *en route* by builders that are
+walking at the enemy anyway. Ours is not, because a builder that plans its own
+mining will always find one more job worth doing. Capping the detour at 5-8 tiles
+was the attempt to reproduce "mine only what is on the way", and it fails on
+mechanism: fresh ore keeps coming into range as the builder marches, so it never
+stops mining and still ends games with 0-2 sentinels. Any scheme where mining is
+a *behaviour* rather than a fixed short *quota* runs to the same place.
+
+**The incumbent's economy is not the weak part — it is well-sized.** Capping
+belt runs at 0 (harvesters only on ore already touching the core) mines nothing
+at all on most maps and scores 16.7%, while the incumbent collects 420-870 Ti
+per game with builders that mostly siege. Its 3-order cap is not a bug to route
+around; it is roughly the right amount of mining, bought at roughly the right
+price in builder turns.
 
 ## The turtle experiment (drastic playstyle change) — 42.2%
 
@@ -182,6 +263,14 @@ scale. Do not "fix" this by building fewer turrets.
 Two traps when tuning ammo, both hit here:
 - `can_convert_ammo()` is **all-or-nothing** — asking for an unaffordable shortfall
   converts NOTHING, so a bigger target can leave turrets drier than a small one.
+  Fixing that by stepping the request down (`want`, `want//2`, `want//4`, 10 until
+  one is affordable) measured 41.7% at the current target of 20 and 45.3% over 150
+  games at a target of 40 — so the all-or-nothing behaviour is load-bearing too,
+  presumably because titanium not spent on ammo is titanium available for the next
+  sentinel. Note the target-40 variant read **55.0% at 60 games** before settling
+  at 45.3% over 150: the single clearest reminder this session that a 60-game read
+  is worth nothing. A target of 80 lands at exactly 50.0% over 60 games, i.e. no
+  detectable effect either way.
 - A controller sized from ammo *burned* starves itself: during starvation nothing burns,
   so it reads "no demand" and decays. Treat an empty pool as the demand signal.
 
@@ -250,6 +339,12 @@ mining orders, which pushes them into attacking. Do not "fix" either in isolatio
   value). Fixing alone → 50.0%.
 - A builder that does not move writes 0 to its scout slot, which decodes to
   `Position(0, 0)`, so the core thinks it is at the origin. Fixing alone → 43.3%.
+- `_bot_pathfind` pops a step off its cached BFS route whether or not the move
+  happened, and builders move on a cooldown, so every cooldown turn silently
+  discards a step and the rest of the route points at tiles the builder never
+  reached. Found while rewriting the economy (one builder sat on one tile from
+  turn 20 to turn 83). Fixing alone → 40.0%; the resulting wander appears to be
+  load-bearing too.
 
 ## Proven bugs worth fixing (written, not merged)
 
@@ -268,8 +363,13 @@ mining orders, which pushes them into attacking. Do not "fix" either in isolatio
   believing anything.
 - Play every (map, seed) **twice with sides swapped**; side bias is large.
 - Use `--tle 0` when comparing strategies, or results depend on machine load and
-  penalise whichever variant computes more. Check the CPU budget separately with
-  `get_cpu_time_elapsed()`.
+  penalise whichever variant computes more. **Then check the CPU budget separately
+  with `get_cpu_time_elapsed()` — `--tle 0` hides a broken bot completely.** The
+  economy rewrite first measured 6.9ms median / 13.2ms max per builder against a
+  10ms limit (the live bot is 0.2ms / 4.3ms) and would have passed a full
+  150-game A/B while having turns interrupted on the ladder. Building `Position`
+  NamedTuples inside a per-turn BFS was almost all of it; raw `(x, y)` tuples plus
+  a replan timer brought it to 0.4ms / 8.8ms.
 - `fcode maps sync` first — the repo's `maps/` once held an entirely stale pool.
 - **A do-nothing opponent bot is the best debugger.** If economy is still broken with
   nobody attacking, it is a bug, not pressure.
@@ -284,6 +384,9 @@ mining orders, which pushes them into attacking. Do not "fix" either in isolatio
   6 store slots did not raise harvester count, reordering heal/siege did not raise
   sentinel count, and the first ammo controller made firing *worse*.
 - Source files are **CRLF**; `sed` patterns anchored with `$` fail silently.
+- Module-level globals are **not shared between units** — a counter in a module
+  dict reads back as zero from the core. Probes must print per event and be
+  aggregated outside (see `experiments/patch_probe.py`).
 
 ## Where the top bots are ahead
 
@@ -463,3 +566,20 @@ per-unit-per-round printing is a measurable CPU cost).
 - Each unit has its own 10ms budget; avoid unbounded loops or whole-map recomputation
   every round.
 - Stay consistent with this API rather than inventing methods.
+
+### Engine facts measured here, not in the docs
+
+- **Conveyors are passable; the core is not.** Builders walk over their own belts
+  (that is how the belt-laying loop works), but the core's 2x2 footprint blocks
+  movement. Being part of the resource network says nothing about passability —
+  conflating the two made pathfinding route straight through our own core and
+  froze two of four builders from turn 17 to the end of the game.
+- **The core is not at the map origin.** On midgard it is at (3, 3). Anything that
+  assumes (0, 0) is wrong, and `Position(0, 0)` is truthy, so the mistake is quiet.
+- `Map.configure(width, height, core_pos)` records `core_pos` as the core. Builders
+  call it with **their own** position, so `local_map.own_core` on a builder is its
+  spawn tile, not the core. Find the core in vision instead.
+- `can_build_*()` returns False while the action cooldown is running, which is not
+  distinguishable from "too expensive" or "tile occupied" without checking each
+  yourself. Treating a cooldown refusal as "impossible" makes a builder walk away
+  from a site it was one turn from building.
