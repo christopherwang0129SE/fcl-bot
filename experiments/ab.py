@@ -14,6 +14,18 @@ POOL = ["antler", "archipelago", "auroraveil", "drakkarfjord", "drumlin",
         "fjordgate", "frostgate", "glacierkeep", "icefloe", "midgard",
         "nordkap", "ragnarok", "royale", "valkyrie", "yulerune"]
 
+# The 15 maps our REAL ladder games are actually drawn from, measured over 300
+# games with experiments/ladder_stats.py. Only five of them (auroraveil,
+# glacierkeep, icefloe, midgard, valkyrie) are in POOL, so every A/B in this
+# project so far was run on a pool that shares a third of its maps with the
+# ladder -- which is a large part of why mirror results and real results have
+# disagreed. Prefer this one with --pool ladder.
+LADDER_POOL = ["auroraveil", "bifrost", "fimbulwinter", "glacierkeep", "helheim",
+               "holmgang", "icefloe", "jotunheim", "longhouse", "midgard",
+               "paths", "skald", "stavkirke", "valkyrie", "yggdrasil"]
+
+POOLS = {"ab": POOL, "ladder": LADDER_POOL, "both": sorted(set(POOL) | set(LADDER_POOL))}
+
 
 def run_one(args):
     bot_a, bot_b, mapname, seed, tle = args
@@ -43,12 +55,14 @@ def main():
     ap.add_argument("--seed-start", type=int, default=1,
                     help="first seed; use a fresh range to replicate a result")
     ap.add_argument("--maps", default=None)
+    ap.add_argument("--pool", default="ab", choices=sorted(POOLS),
+                    help="ab = the legacy 15-map pool, ladder = the maps the real ladder plays")
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--tle", type=int, default=0)
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
 
-    maps = a.maps.split(",") if a.maps else POOL
+    maps = a.maps.split(",") if a.maps else POOLS[a.pool]
     jobs = []
     for m in maps:
         for s in range(a.seed_start, a.seed_start + a.seeds):

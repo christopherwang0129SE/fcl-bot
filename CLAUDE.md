@@ -20,12 +20,15 @@ then the **official game/API reference** copied from the Florent docs' AGENTS.md
 
 ## What is live
 
-- `bots/scouter3` is the **live ladder bot** (submission **v8 `robust-ecocap5`**, activated
-  2026-08-22). It is `scouter2` plus six patch scripts: `patch_mapguard`, `patch_oob`,
-  `patch_blocked`, `patch_siegepick`, `patch_respawn`, `patch_ecocap 5`. Rebuild it from
-  scratch at any time by applying those six to a copy of `bots/scouter2`.
-- `bots/scouter2` is the previous live bot (v4) and the **A/B baseline** every measurement
-  in this file is against. `bots/starter` and `bots/scouter` are not maintained.
+- `bots/scouter2-robust` is the **live ladder bot** (submission **v8 `robust-ecocap5`**,
+  activated 2026-08-22; an earlier version of this file wrongly named `scouter3`). It is
+  `scouter2` plus six patch scripts: `patch_mapguard`, `patch_oob`, `patch_blocked`,
+  `patch_siegepick`, `patch_respawn`, `patch_ecocap 5`. Rebuild it from scratch at any
+  time by applying those six to a copy of `bots/scouter2`.
+- `bots/scouter2` is the v4 bot and the **A/B baseline** for every measurement in the big
+  table below. Newer work is measured against `scouter2-robust` instead — say which.
+- `bots/starter` and `bots/scouter` are not maintained.
+
 - Submit: `fcode submit <botdir> -n <name>` — note this **auto-activates** the new version,
   it is not a two-step process any more. `fcode submission activate <version>` reverts.
 - `fcode submit` has no `--json`. `fcode ladder --json` returns only the top 20; use
@@ -34,6 +37,25 @@ then the **official game/API reference** copied from the Florent docs' AGENTS.md
 - The CLI is not on the default path: `source /var/home/student/.venvs/fcode/bin/activate`.
 - Unrated scrimmages always use the **active** submission, and are rate-limited to
   **5 per 10 minutes** (the CLI error says 10, not the 20 previously recorded here).
+
+### The two lineages (there are two people working on this)
+
+| Bot | Lineage | What it is |
+| --- | --- | --- |
+| `scouter2` | — | v4, the old baseline |
+| `scouter2-robust` | ours | **v8, live.** scouter2 + the 6 robustness/ecocap patches |
+| `scouter2-patched` | theirs | **scouter2-robust + `patch_conveyor`. The best bot measured.** |
+| `scouter3` | theirs | economy rewrite; 48.7% vs v4, loses 71.3% to v8, stalls 12/12 on longhouse |
+| `scouter4` | theirs | scouter3 + gunner units, defensive builders, KIA detection, save-money |
+| `scouter4-patched` | theirs | scouter4 + ecocap5 |
+| `scouter5` | ours | scouter4-patched + `patch_robustpath` (v8's pathfinding ported across) |
+| `econ` | ours | the abandoned economy rewrite, 10.7% — kept as evidence, do not revive |
+
+The two lineages are **complementary, not competing**, and the per-map records prove it:
+scouter4 beats v8 10-0 on drakkarfjord, 9-1 on fjordgate and nordkap (its planner handles
+long belt runs), and loses 0-10 on yulerune, midgard, royale and archipelago (its builders
+keep no map, so they cannot plan a march longer than their vision radius). Merge in both
+directions rather than picking a side.
 
 ## Cost scaling dominates everything
 
@@ -104,6 +126,63 @@ thing in the game; builder bots and turrets are the expensive ones.
 | **Defend with the damage-response builders** (`patch_defend`) | 150 | **35.3%** |
 | Commit to a map symmetry (`patch_symcommit`) | 12/map | rejected — yulerune stalls 8/12 → **12/12** |
 
+### Measured against **`scouter2-robust` (v8)**, not scouter2 — 2026-08-23
+
+Everything above is vs the v4 baseline. These are vs the live v8, legacy 15-map
+pool, seeds 1-5, `--tle 0`:
+
+| Change | Games | Win rate |
+| --- | --- | --- |
+| `scouter4` (their gunner/defence bot) | 150 | 42.7% |
+| `scouter4-patched` (+ `patch_ecocap 5`) | 150 | 53.3% |
+| **`scouter2-patched` (v8 + `patch_conveyor`)** | **450** | **62.0%** (66.7 / 59.3 / 60.0) |
+| `scouter5` (`scouter4-patched` + `patch_robustpath`) | 150 | 50.0% |
+| `scouter5` vs `scouter2-patched` | 150 | 44.0% |
+| `scouter4-patched` vs `scouter2-patched` | 150 | 46.7% |
+
+**Beware the baseline when someone quotes a win rate.** Two figures circulated in the team
+chat that do not mean what they sound like: "scouter2-patched is 88%" is against
+`bots/scouter2` (**v4**, two submissions old), not against the live bot — against v8 it is
+62%. And "80%, scouter4 vs scouter2, both patched" is contradicted by direct measurement:
+`scouter4-patched` vs `scouter2-patched` is **46.7%** (70-80), i.e. it loses. Always name
+the opponent directory, and re-read the side-confusion warning in the measurement
+discipline section.
+
+Two things to take from this:
+
+- **`patch_ecocap 5` transfers across the lineage split.** It is the single most
+  portable change in the project: +10.6 points dropped into a bot it was never
+  written for, enough to carry it past v8. Try it on anything new.
+**`scouter2-patched` replicates, on both pools.** Three independent seed ranges on the
+legacy pool (1-5, 11-15, 21-25) give 66.7 / 59.3 / 60.0, pooled **62.0% over 450 games**;
+two ranges on the ladder pool give 57.3 / 59.3, pooled **58.3% over 300 games**. As always
+the first range was the optimistic one — but unlike every previous promising result in
+this file it settled at ~60% instead of decaying to 50%.
+
+The per-map pattern is stable across every run:
+
+| Consistently won | Consistently lost |
+| --- | --- |
+| glacierkeep **10-0** (all three runs) | **paths 0-10** (both ladder runs) |
+| jotunheim **10-0**, bifrost **10-0** | valkyrie 3-7 / 2-8 |
+| ragnarok 10-0, fimbulwinter 9-1/10-0 | |
+| drakkarfjord 8-2 | |
+
+`paths` is a genuine, reproducible cost — we are 12-5 on it on the ladder today. It is one
+map against glacierkeep + jotunheim + bifrost, which are **8-46** on the ladder, so the
+trade is heavily favourable, but it is a real trade and not noise. Neither map stalls: vs
+the idle bot both bots win `longhouse` and `paths` in the same turn count (102 vs 104, 54
+vs 56), so the mirror losses there are a race, not a defect.
+
+- **`patch_robustpath` is a real fix that does not pay.** Porting v8's local-map
+  BFS into the scouter4 line did exactly what it was designed to do — yulerune
+  0-10 → 2-8, midgard 0-10 → 2-8, auroraveil 6-4 → 10-0, frostgate 0-10 → 4-6 —
+  and lost more than it gained elsewhere: icefloe 5-5 → **0-10**, drumlin 5-5 →
+  **0-10**, royale 10-0 → 5-5, ragnarok 10-0 → 6-4. Net 53.3% → 50.0%. This is
+  the same shape as the `dist = 63` and `Position(0,0)` findings: the defect is
+  genuine and the wandering it causes is accidentally load-bearing. The patch is
+  kept in `experiments/` as evidence, not as a candidate.
+
 Builder-bot count is a genuine optimum at the current 4 — 2 → 38.7%, 3 → 44.0%,
 **4 → baseline**, 5 → 30.7%, 6 → 22.7%. Do not touch it.
 
@@ -132,7 +211,59 @@ that the economy plateau and the freezes share a cause — a builder rattling be
 tiles for 900 rounds is not mining either — so some of what looked like an economy
 ceiling was builders that had simply stopped.
 
-## What the real ladder says (300 games, `experiments/ladder_stats.py`)
+## The ladder after v8: 37.7% -> 51.0% (300 games, `experiments/ladder_stats.py`)
+
+Re-run 2026-08-23, one day after activating v8 `robust-ecocap5`, over the 300
+most recent ladder games. This is the same instrument as the v4 baseline below
+and it is the strongest evidence in this file that the robustness axis was the
+right one:
+
+| | v4 baseline | **v8 now** |
+| --- | --- | --- |
+| Ladder record | 113-187 = **37.7%** | 153-147 = **51.0%** |
+| Rank / rating | #54 / 1409 | **#44 / 1539** |
+| Median turns when we lose | 154 | **81** |
+| Losses running past turn 200 | 37.9% | **29.9%** |
+| longhouse | **1-18 (5.3%)** | **13-4 (76.5%)** |
+
+`longhouse` — the map `patch_blocked` was diagnosed on, and our worst map on the
+board — went from 5.3% to 76.5%. The stall diagnosis and its fix are confirmed
+on real opponents, not just against the idle bot.
+
+### What is left, and it is concentrated
+
+| Map | v8 ladder | Note |
+| --- | --- | --- |
+| glacierkeep | **1-13 (7.1%)** | mines **0** titanium — conveyor encoding |
+| jotunheim | **2-18 (10.0%)** | mines **0** titanium — conveyor encoding |
+| bifrost | 5-15 (25.0%) | new; not in either audit yet |
+| midgard | 23-4 (85.2%) | best map |
+| longhouse | 13-4 (76.5%) | was 1-18 |
+| paths | 12-5 (70.6%) | |
+
+**glacierkeep + jotunheim are 3-31 between them.** They are exactly the two maps
+the audit calls "mines NOTHING", and 16 of our 147 losses were decided on
+`titanium_collected` — which is automatic on a map where we mine zero. Verified
+directly against the do-nothing opponent (one game each, seed 3):
+
+| map | v8 | v8 + `patch_conveyor` |
+| --- | --- | --- |
+| glacierkeep | **0 Ti**, 109 turns | **330 Ti**, 63 turns |
+| jotunheim | **0 Ti**, 77 turns | **220 Ti**, 55 turns |
+| bifrost | 270 Ti, 61 turns | 390 Ti, 59 turns |
+
+This is the largest identified lever left on the live bot. Note the earlier
+warning in this file — v6 (conveyor fix on top of *v4*) scrimmaged 1-24 — was
+measured before any of the robustness work existed, on the top-tier opponent set
+we lose to regardless.
+
+**Caution on the loss-shape table below.** Under v8 the share of losses ending
+before turn 60 is 34.0%, not 6.5%. That is not a new vulnerability to rushes:
+games are simply much shorter now in both directions (median win 71, median loss
+81), so the same absolute number of fast losses is a much larger share. The
+absolute stall tail is what shrank.
+
+## What the v4 baseline ladder said (300 games, kept for comparison)
 
 Read-only, costs nothing, and nobody had looked before. Overall **113-187 =
 37.7%**, and the per-map record lines up almost exactly with what the
@@ -170,6 +301,23 @@ Two more things fall out of it:
 
 Note `longhouse` and `jotunheim` are not in the 15-map A/B pool at all, so no
 amount of A/B tuning could ever have seen our two worst maps.
+
+## The A/B pool and the ladder pool are different pools
+
+Measured 2026-08-23 from 300 real games: the ladder draws from
+
+    auroraveil bifrost fimbulwinter glacierkeep helheim holmgang icefloe
+    jotunheim longhouse midgard paths skald stavkirke valkyrie yggdrasil
+
+and the 15-map A/B pool shares only **five** of them (auroraveil, glacierkeep,
+icefloe, midgard, valkyrie). Ten of the maps we tune on are never played, and
+ten of the maps we are scored on are never tested — including `jotunheim` and
+`longhouse`, two of the three worst. Every win rate in this file was measured on
+the wrong two-thirds of the board, which is a large part of why mirror A/Bs and
+real results have disagreed.
+
+`experiments/ab.py` now takes `--pool ladder` (or `--pool both`). **Use it.** The
+legacy pool is kept as `--pool ab` only so old numbers remain reproducible.
 
 ## The mirror A/B is blind to whole classes of defect
 
@@ -706,10 +854,18 @@ mining orders, which pushes them into attacking. Do not "fix" either in isolatio
 - **All-NORTH conveyor routes are silently dropped.** `CARDINALS.index(NORTH) == 0`, so a
   pure-north route encodes as all-zero bits and `if (number >> 15) > 0` reads it as "no
   path". The builder lays no belts, builds the harvester anyway, and marks the order
-  done. On `glacierkeep` this means **0 titanium in 263 turns against an idle opponent**.
-  Fix: bit 31 is free — use it as an explicit "path present" flag.
+  done. Fix: bit 31 is free — use it as an explicit "path present" flag.
 - **8-tile conveyor cap** rejected 609/609 plans on `drakkarfjord` (zero harvesters all
   game). It is an encoding limit, not a game rule.
+
+**Which of the two actually causes the zero-mining maps: the cap, not the encoding.**
+Measured 2026-08-23 by building v8 + the `PATH_PRESENT_BIT` flag *alone* and running it
+against the idle bot: `glacierkeep` still mines **0 Ti in 109 turns** and `jotunheim`
+still mines **0 Ti in 77 turns** — identical to v8. Both maps only start mining when the
+chain cap is raised (`MAX_CONVEYOR_CHAIN = 20`) and the builder finishes the tail with its
+own BFS. So the earlier attribution of `glacierkeep` to the all-NORTH bug in this file was
+wrong; it is the same 8-tile cap that kills `drakkarfjord`. Apply `patch_conveyor` as a
+unit — its two halves are not independently useful.
 
 ## Measurement discipline (learned the hard way)
 
