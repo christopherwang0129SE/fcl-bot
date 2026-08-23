@@ -283,6 +283,49 @@ real gap. Do not copy a top bot's composition again; that is now 0 for 4
 (Pantheon's composition 21.3%, the econ rewrite 10.7%, MIXED 1-19 in real games,
 this 5.3%).
 
+### Ammo starvation is an equilibrium, not a defect
+
+The strongest mechanism result of the session, and it changes nothing. Chain of
+measurement on v10 (`experiments/patch_firepower.py`, rebuilt; the original was
+lost with an old scratchpad):
+
+1. **Sentinels waste no ammo on junk.** Of 346 shots, **344 hit the enemy core**
+   and 2 a builder. Ammo triage -- holding fire on cheap buildings -- is dead
+   before it is written.
+2. **We are broke, so a bigger buffer cannot help.** At an ammo-blocked turn the
+   median bank is **10 Ti**; only 6% of blocked turns hold 20+, 3% hold 80+.
+   That is why the target sweep (20/40/80) never did anything.
+3. **But there is a live all-or-nothing bug.** The core runs
+   `if ammo < 20: if can_convert_ammo(20): convert_ammo(20)`. With 10 Ti banked
+   that call is False, so it converts **nothing** while a sentinel cannot fire.
+   **53% of blocked turns (268 of 505) held at least one shot's worth of
+   titanium, unspent.**
+
+`experiments/patch_ammoafford.py` converts the affordable shortfall rounded down
+to whole sentinel shots (converting 7 ammo buys nothing; a shot costs 10). It
+works exactly as intended:
+
+| | fires on | blocked by ammo |
+| --- | --- | --- |
+| v10 | 35% | **43%** |
+| affordable, target 20 | 42% | 27% |
+| affordable, target 40 | **43%** | **22%** |
+
+And it is worth nothing: **46.0% / 50.0% / 44.0%** for targets 20 / 40 / 60,
+150 games each on the ladder pool. The best reading is 75-75, dead neutral.
+
+**Interpretation, and it is the useful part.** Titanium is fungible, and at the
+margin a shot (10 Ti, 18 damage now) and a fraction of the next sentinel are
+worth the *same*. The 40% ammo blocking is not damage being lost -- it is the
+economy correctly refusing to over-invest in one of two equally-priced outlets.
+This confirms the note already in this file ("titanium not spent on ammo is
+titanium available for the next sentinel") and settles it with a clean
+measurement rather than a plausible story.
+
+**Stop treating the idle-sentinel statistic as an opportunity.** Feeding the
+turrets is not a lever; the binding constraint is total income, which is the
+architecture problem, not the ammo policy.
+
 ### The launcher catapult: the mechanism works, the win rate does not
 
 `experiments/patch_catapult.py`. The bot implements CORE, BUILDER_BOT and
