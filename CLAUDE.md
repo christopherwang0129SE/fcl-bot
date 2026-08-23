@@ -524,6 +524,21 @@ different fix (`patch_conveyor`) and the two are complementary: measured alone,
 the conveyor fix takes glacierkeep from 109 to 80 turns but leaves longhouse and
 yulerune stalling 7/12 and 8/12, exactly as before.
 
+### `scouter2-patched` re-audited the same way, 2026-08-23
+
+Same instrument, all 46 maps, 2 seeds, **TLE ON**:
+
+- **92/92 games won.** No map fails to end.
+- **No tracebacks and no time-limit messages** — so the builder's BFS tail-routing
+  (`_extend_conveyor_path`, capped at 1500 nodes) fits the 10 ms budget.
+- **1 map flagged, down from 4**: only `showdown` still mines nothing, and it is
+  won in 85 turns anyway. The three that mattered are repaired — drakkarfjord
+  **600 Ti**, glacierkeep **330 Ti**, jotunheim **220 Ti**, all previously zero.
+- longhouse 102 turns / 820 Ti, yulerune 74 / 580, string 42 / 310 — the stall
+  family stays fixed.
+
+This is the cleanest audit any bot in this project has produced.
+
 CPU with the fixes in: median 0.3–1.4 ms, max 6.7 ms per builder turn against the
 10 ms limit — the live bot's max is 6.9 ms, so this costs nothing measurable.
 
