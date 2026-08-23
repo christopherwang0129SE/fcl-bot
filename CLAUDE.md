@@ -283,6 +283,28 @@ real gap. Do not copy a top bot's composition again; that is now 0 for 4
 (Pantheon's composition 21.3%, the econ rewrite 10.7%, MIXED 1-19 in real games,
 this 5.3%).
 
+### Gunners cannot reach the core from a sentinel siege tile
+
+Measured while building `experiments/patch_hailmary.py`, and it closes off a
+whole family of ideas: **gunner range is r^2=13 (3.6 tiles), sentinel range is
+r^2=32 (5.6 tiles)**. Our builders stand at *sentinel* standoff, so
+`can_fire_from(tile, dir, GUNNER, core_tile)` is False everywhere they ever
+stand -- the first version of the patch built **zero** gunners in every game.
+A gunner is only placeable against the enemy's *forward buildings*, which is
+exactly why Bean counters puts its eight gunners 26 tiles out rather than on
+our core. That placement is forced by the range, not chosen.
+
+Retargeted at any enemy building in sight the mechanism does fire -- 11-14
+gunners against 4-5 sentinels per 3 games, i.e. Bean counters' shape -- and it
+still loses: **18.7% over 150 games**, with or without deferring the heal.
+That is within noise of v5 MIXED's 21.3%, the same idea measured a year of
+experiments earlier.
+
+**Copying a top team's composition is now 0 for 5**: Pantheon's composition
+21.3% (1-19 in real games as v5), the econ rewrite 10.7%, Ouroboros' 1-builder
+shape 5.3%, forward gunners 18.7%. The composition is always downstream of an
+economy or an execution we do not have. Stop trying this.
+
 ### What the cutoff band actually looks like
 
 Unrated scrimmages, v10 active, against the teams on the top-32 line:
