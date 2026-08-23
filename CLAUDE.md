@@ -216,6 +216,82 @@ that the economy plateau and the freezes share a cause — a builder rattling be
 tiles for 900 rounds is not mining either — so some of what looked like an economy
 ceiling was builders that had simply stopped.
 
+## Reading real opponents' replays (new tooling, 2026-08-23)
+
+`fcode match list --team <id>` works for **any** team, and `fcode match replay`
+downloads their games. So the whole ladder is observable and nobody had looked.
+
+- `experiments/replay_read.py` — decodes a `.replay26` into an event log
+  (spawns, moves, deaths, fire events with source and target).
+- `experiments/profile_bot.py` — turns replays into composition and timing:
+  what each side built, on what turn, how far forward.
+- `experiments/tempo.py` — turn of our first sentinel and of its first shot on
+  the enemy core. The mirror is blind to tempo, because both copies are equally
+  slow.
+- `experiments/rusher` — lab opponent: our bot with the economy switched off.
+
+Validated by reproducing a known game spawn-for-spawn. Caveat: on some replays
+it reports impossible states (a winner with zero conveyors), so cross-check
+before trusting a single game.
+
+### Why we lose the fast games
+
+Three real losses to Jacobs Code, all the same shape: their sentinel is firing
+on our core by turn 8-12, ours does not answer until turn 30+. But the fix is
+not what it looks like:
+
+| | measured |
+| --- | --- |
+| our median first sentinel | **turn 34** |
+| ...with the economy removed entirely | turn 30 |
+| movement rate, both teams | ~0.85 tiles/turn — identical |
+| our bot vs `experiments/rusher` (4 builders, no economy) | **150-0** |
+
+So economy costs ~4 turns, not 20, and a naive economy-free rush is simply bad.
+On midgard the trace shows our builder walking 38 tiles in 40 turns in a
+straight line and planting a sentinel the instant it is in range: **the march is
+geometry, not a bug.**
+
+### Copying the winning composition: 26th failed strategy experiment
+
+Profiling Ouroboros (#33, swept us 0-5) and `not adgato` (#1) shows the same
+shape in every game from both teams: **1 builder, 0 conveyors, 1 harvester beside
+their own core on turn 3, then 4 sentinels planted 18-22 tiles out on our core**,
+game over by turn 37-48. We field 4-6 builders, 15-20 conveyors and manage 1-2
+sentinels. The cost-scale arithmetic is compelling — at one builder their scale
+sits near 120% so four sentinels cost ~180 Ti, against our 230-260% where each
+costs 69-78.
+
+It does not transfer. Against the live v10 on the ladder pool, 150 games each:
+
+| builders / harvester orders | win rate |
+| --- | --- |
+| **1 / 1 (the exact copy)** | **5.3%** |
+| 1 / 2 | 30.7% |
+| 2 / 1 | 30.0% |
+| 2 / 2 | 33.3% |
+
+Monotone, and continuous with the existing builder sweep (2 -> 38.7%, 3 -> 44.0%,
+4 -> baseline). **Builder count 4 is confirmed optimal from below as well as
+above.** `experiments/patch_minimal.py` reproduces it.
+
+The composition is downstream of execution we do not have: Ouroboros gets **four
+sentinels out of one builder**, we place one or two even with four. CLAUDE.md
+already measured why — of 347 siege turns only **5** had a tile that was both
+buildable-adjacent and bearing on the core. That ratio, not builder count, is the
+real gap. Do not copy a top bot's composition again; that is now 0 for 4
+(Pantheon's composition 21.3%, the econ rewrite 10.7%, MIXED 1-19 in real games,
+this 5.3%).
+
+### What the cutoff band actually looks like
+
+Unrated scrimmages, v10 active, against the teams on the top-32 line:
+**10-15 = 40.0%**, where Elo predicts 31% for our rating. We take the series off
+**Atlas (#31) 3-2** and **0033 (#32) 3-2**, and get swept 0-5 by Ouroboros (#33).
+Two loss shapes: fast (turns 38-53, tempo) and long grinds (250-420 turns,
+attrition). Scrimmage the #28-36 band, not the top five — against a bot 600-800
+points above us we lose whatever we change.
+
 ## The ladder after v8: 37.7% -> 51.0% (300 games, `experiments/ladder_stats.py`)
 
 Re-run 2026-08-23, one day after activating v8 `robust-ecocap5`, over the 300
