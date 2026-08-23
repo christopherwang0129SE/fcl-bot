@@ -1,3 +1,5 @@
+from xml.dom.minidom import Entity
+
 from fcode import Controller, Team, EntityType, Environment, Direction, Position, GameError
 
 CARDINALS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
@@ -45,6 +47,8 @@ class Map:
         self.conveyor_load: dict[Position,int] = dict()
         self.conveyor_starts: set(Position) = set()
         self.conveyor_directions: dict[Position,Direction] = dict()
+        self.my_conveyors: set[Position] = set()
+        self.my_harvesters: set[Position] = set()
 
     def configure(self, width: int, height: int, core_pos: Position) -> None:
         """Sets the map as configured and creates a grid of Zeroes to represent unscouted terrain"""
@@ -78,7 +82,6 @@ class Map:
             active = next
             next = active.add(self.conveyor_directions[active])
         return self.conveyor_load[active]
-
 
     def update_conveyor_distance_grid(self):
         opened: list[list[Position]] = [[]]
@@ -133,7 +136,7 @@ class Map:
             if not adjacents:
                 return False, first_conveyor, build_direction, None, path_directions
             active_conveyor = min(adjacents, key=lambda tile: self.get_conveyor_distance_at(tile))
-            if len(conveyor_path) > 8:
+            if len(conveyor_path) > 7:
                 if self.get_conveyor_distance_at(conveyor_path[-1]) < 14:
                     return self.plan_conveyor_to(conveyor_path[-2], repeats+1)
                 else:
@@ -177,7 +180,7 @@ class Map:
             if not adjacents:
                 return False, easiest_build, build_direction, None, path_directions
             active_conveyor = min(adjacents, key=lambda tile: self.get_conveyor_distance_at(tile))
-            if len(conveyor_path) > 8:
+            if len(conveyor_path) > 7:
                 if self.get_conveyor_distance_at(conveyor_path[-1]) < 14:
                     return self.plan_conveyor_to(conveyor_path[-2])
                 else: return False, easiest_build, build_direction, None, path_directions
@@ -232,11 +235,25 @@ class Map:
         if (not self.configured) or pos.x<0 or pos.x>=self.width or pos.y<0 or pos.y>=self.height: return None
         return self.environment_grid[pos.y][pos.x]
 
+    def get_entity_code_at(self, pos: Position) -> int | None:
+        if (not self.configured) or pos.x < 0 or pos.x >= self.width or pos.y < 0 or pos.y >= self.height: return None
+        return self.entity_grid[pos.y][pos.x]
+
+    def is_passable(self, pos: Position) -> bool:
+        if (not self.configured) or pos.x < 0 or pos.x >= self.width or pos.y < 0 or pos.y >= self.height: return False
+        env = self.get_environment_at(pos)
+        if env == Environment.WALL: return False
+        entity = self.get_entity_code_at(pos)
+        return entity in [0, 6, 14]
+
+
     def set_entity_at(self, pos: Position, entity_n: int) -> None:
         """Sets the specified position if valid, else does nothing"""
         if (not self.configured) or pos.x < 0 or pos.x >= self.width or pos.y < 0 or pos.y >= self.height: return
         if pos in self.own_core: return
         if entity_n == 8 and pos not in self.opp_core: self.opp_core.append(pos)
+        elif entity_n == 5: self.my_harvesters.add(pos)
+        elif entity_n == 6: self.my_harvesters.add(pos)
         self.entity_grid[pos.y][pos.x] = entity_n
 
     def get_conveyor_distance_at(self, pos: Position) -> int:

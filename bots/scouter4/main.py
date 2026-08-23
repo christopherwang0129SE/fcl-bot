@@ -3,9 +3,12 @@ from fcode import Controller, Team, EntityType, Environment, Direction, Position
 
 from mapclass import Map, print_conveyor_info
 from encodeparse import (encode_entities, parse_entities, encode_scout, parse_scout, encode_game_data, parse_game_data_number,
-                         parse_game_data, read_stored_env_scout, read_stored_scout, encode_build_order, parse_build_order)
+                         parse_game_data, read_stored_env_scout, read_stored_scout, encode_build_order, parse_build_order, log_scout_to_map, log_entities_to_map)
 from encodeparse import CARDINALS, Environments, SCOUT_EDGE_OFFSETS, SCOUT_CLOSE_CROSS_OFFSETS, SCOUT_FAR_CROSS_OFFSETS, SLOT_GAME_DATA, KIA_CODE
 from tiletools import tiles_to_attack_with_sentinel_from, tiles_to_attack_core_map_mode, tiles_to_attack_core_ct_mode, tiles_in_crosshair, tile_has_enemy, tile_has_friend, tile_has_enemy_core, sentinel_could_hit_opp_core_from, adjacent_tiles, gunner_could_target_if_turned, hostile_buildings_near, gun_placement_to_match, unmatched_hostiles_near
+from pathfind import bfs_path
+
+
 ENV_MAP = Map()
 
 
@@ -37,8 +40,9 @@ class Player:
         self.build_direction: Direction|None = None
         self.build_type_n: int = 0
         self.follow_path: Direction|None = None
-        self.lost_at: set[Position] = set()
         self.build_counter_gun: Position|None = None
+        self.builders_map: Map = Map()
+        self.lost_at: set[Position] = set()
 
         #CORE
         self.bots_made = 0
@@ -47,6 +51,7 @@ class Player:
         self.build_orders_made: list[tuple[Position, int]] = []
         self.defense_orders_made: list[tuple[Position, int]] = []
         self.bots_kia: set[int] = set()
+        self.missing_eco: set[Position] = set()
 
         #ALL
         self.own_core_tiles = []
@@ -154,15 +159,18 @@ class Player:
                 ct.write_store(scout_slot,0)
                 self.builder_positions[i] = self.own_core_tiles[0]
             else:
-                self.builder_positions[i] = read_stored_scout(scout_slot, ENV_MAP, ct)
+                self.builder_positions[i], noticed_missing = read_stored_scout(scout_slot, ENV_MAP, ct)
+                for position in noticed_missing: self.missing_eco.add(position)
 
         if ct.read_store(3) == KIA_CODE:
             self.bots_kia.add(3)
             ct.write_store(3, 0)
         elif self.bots_made > 3:
-            read_stored_scout(3, ENV_MAP, ct) #Bot 4 is special
+            _, noticed_missing = read_stored_scout(3, ENV_MAP, ct) #Bot 4 is special
+            for position in noticed_missing: self.missing_eco.add(position)
 
         print(f"{self.bots_kia=}")
+        print(f"{self.missing_eco=}")
 
         ENV_MAP.update_conveyor_distance_grid()
         if ENV_MAP.known_symmetry is None:
@@ -179,15 +187,16 @@ class Player:
         attempted_ores = []
         for i in range(0,3-len(self.build_orders_made)):
             if not ENV_MAP.unplanned_ore: break
+            if len(ENV_MAP.planned_ore) > 7: break
             possible, go_to, build_direction, build_type, conveyor_path = ENV_MAP.plan_easiest_harvester(attempted_ores)
             if not possible:
                 print(f"PLAN FAILED {go_to}")
                 attempted_ores.append(go_to)
             else:
-                print(f"PLAN MADE {go_to=}\n{[dir.name[0] for dir in conveyor_path]}")
                 build_order_number = encode_build_order(go_to, build_type, build_direction,
                                                         conveyor_path)
                 self.build_orders_made.append((go_to,build_order_number))
+                print(f"PLAN MADE {go_to=}\n{[dir.name[0] for dir in conveyor_path]}\n{build_order_number}")
                 for ticket in self.build_orders_made:
                     if ticket is not None: ct.draw_indicator_dot(ticket[0], 255, 0,0)
 
@@ -235,7 +244,7 @@ class Player:
                     self.bots_made += 1
                     break
 
-        elif ct.get_hp() < ct.get_max_hp() and self.bots_made < 8 and not self.save_money:
+        elif ct.get_hp() < ct.get_max_hp() and self.bots_made < 10 and not self.save_money:
             for pos in sorted(ct.get_nearby_tiles(dist_sq=1), key=lambda tile: tile.distance_squared(
                 Position(ct.get_map_width() // 2, ct.get_map_height() // 2)), reverse=True):  # spawn extra healers towards back
                 if ct.can_spawn(pos):
@@ -243,7 +252,6 @@ class Player:
                     self.bots_made += 1
                     break
         self.save_money = ct.get_global_resources() < 1.5 * ct.get_gunner_cost()
-        print(f"{self.save_money=}")
         ct.write_store(SLOT_GAME_DATA,encode_game_data(self.bots_made if bot_replaced is None else bot_replaced+1, self.opp_core_bottom_right, self.save_money))
         #print_conveyor_info(ENV_MAP)
 
@@ -279,23 +287,19 @@ class Player:
         """Moves toward target based on own vision, moves and updates self.moved_direction"""
         visible_tiles = ct.get_nearby_tiles()
         ct.draw_indicator_dot(target, 0,255,255)
-        if target not in visible_tiles or target in self.lost_at:
-            target = min(visible_tiles, key=lambda tile: tile.distance_squared(target) if (ct.is_tile_passable(tile) and tile not in self.lost_at) else 2047)
-        print(f"Pathfind: {target=}")
-        if not ct.is_tile_passable(target):
-            print(f"Pathfind target is not passable")
-            pass # TODO handle this
-        suggested_move = self._generate_move_path(target, ct)
+        suggested_move = None
+        if target in visible_tiles:
+            suggested_move = self._generate_move_path(target, ct)
+            print(f"VISIBLE {suggested_move=}")
         if not suggested_move:
-            print("Pathfinding failed")
-            self.lost_at.add(target)
-            self.lost_at.add(ct.get_position())
-            for position in self.lost_at: ct.draw_indicator_dot(position, 0,0,255)
-            #print([f"({pos.x},{pos.y})" for pos in self.lost_at])
-            options = [tile for tile in adjacent_tiles(ct.get_position()) if ct.can_move(ct.get_position().cardinal_direction_to(tile))]
-            print(f"{options=}")
-            if options: suggested_move = ct.get_position().cardinal_direction_to(min(options, key=lambda tile: tile.distance_squared(target)))
-        else: self.lost_at.clear()
+            map_path = bfs_path(self.builders_map, ct.get_position(), target)
+            if map_path:
+               suggested_move = map_path[0]
+               print(f"BFS {suggested_move=}")
+            else:
+                options = [tile for tile in adjacent_tiles(ct.get_position()) if ct.can_move(ct.get_position().cardinal_direction_to(tile))]
+                if options: suggested_move = ct.get_position().cardinal_direction_to(min(options, key=lambda tile: tile.distance_squared(target)))
+
         if suggested_move:
             if ct.can_move(suggested_move):
                 ct.move(suggested_move)
@@ -391,6 +395,14 @@ class Player:
                         self.follow_path = direction_next
                         print(f"i: {self.path_index} {self.conveyor_path}\nNext: {direction_next}")
 
+    def _builder_configure_map(self, ct: Controller, core_position: Position) -> None:
+        """Sets the parameters of the ENV_MAP and reads the cores own scouting into it"""
+        self.builders_map.configure(ct.get_map_width(), ct.get_map_height(), core_position)
+
+        for tile in ct.get_nearby_tiles():
+            self.builders_map.set_environment_at(tile, ct.get_tile_env(tile))
+            ct.draw_indicator_dot(tile, 0, 255, 0)
+
     def _configure_builder(self, ct: Controller) -> None:
         """The builder finds out who it is from store(game_data), the first 3 bots get scouting slots and build_orders"""
         game_data = parse_game_data(ct)
@@ -406,16 +418,19 @@ class Player:
                     if ct.get_entity_type(id) == EntityType.CORE:
                         if ct.get_team(id):
                             self.own_core_tiles.append(tile)
+        self._builder_configure_map(ct, min(self.own_core_tiles, key=lambda tile: tile.x+tile.y))
 
     def _read_build_order(self, ct: Controller) -> None:
         """Reads build-order from ct.store"""
         self.go_to, self.build_type_n, self.build_direction, self.conveyor_path = parse_build_order(ct.read_store(self.build_order_slot))
         self.build_stage, self.path_index = 0,0
+        print("GOT ORDER" ,self.go_to, self.build_type_n, self.build_direction, self.conveyor_path, sep='\n')
 
     def _push_to_opposite_corner(self, ct: Controller) -> None:
         core_tile = self.own_core_tiles[0]
         other_side_x = ct.get_map_width() - core_tile.x
         other_side_y = ct.get_map_height() - core_tile.y
+        print(f"Pushing to {Position(other_side_x, other_side_y)}")
         self._bot_pathfind(Position(other_side_x, other_side_y), ct)
 
     def _stationary_healer(self, ct: Controller):
@@ -544,18 +559,20 @@ class Player:
         self.moved_direction = None
         game_data = parse_game_data(ct)
         self.save_money = game_data[2]
-        print(f"{self.save_money=}")
 
         if self.am_builder_number == 4:
             self._builder_four(ct)
+            if self.scout_store_slot > 0: self._report_to_store(ct)
+            log_entities_to_map(self.builders_map, ct)
+            return
 
-        if self.am_builder_number > 4:
+        if 4 < self.am_builder_number < 7 :
             self._build_defence(ct)
             self._stationary_healer(ct)
             self._return_to_core(ct)
             return
 
-        if self.am_builder_number > 15: #TODO maye enable again?
+        if self.am_builder_number > 6: #TODO maye enable again?
             print("STATIONARY HEALER")
             self._stationary_healer(ct)
             return
@@ -572,13 +589,14 @@ class Player:
             self._bot_without_orders(ct)
 
         if self.scout_store_slot > 0: self._report_to_store(ct)
+        if self.moved_direction: log_scout_to_map(ct.get_position(), self.moved_direction, self.builders_map, ct)
+        log_entities_to_map(self.builders_map, ct)
 
     #ALL
     def _learn_opp_core(self, ct: Controller) -> None:
 
         game_data = parse_game_data(ct)
         discovered_bottom_core = game_data[1]
-        print(f"\nLEARNING OPP CORE\n old:{self.opp_core_bottom_right}, new:{discovered_bottom_core}")
         if self.opp_core_bottom_right is None and discovered_bottom_core != Position(0,0):
             self.opp_core_bottom_right = discovered_bottom_core
             for dx in 0, -1:

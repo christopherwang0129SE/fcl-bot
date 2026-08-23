@@ -71,8 +71,21 @@ def encode_scout(pos: Position, direc: Direction, ct: Controller) -> int:
             env_n = Environments.index(ct.get_tile_env(tile))
             number += env_n<<shift
         shift -= 2
-
     return number
+
+def log_scout_to_map(pos: Position, direc: Direction, env_map: Map, ct: Controller) -> None:
+    nearby = ct.get_nearby_tiles()
+    direc_n = CARDINALS.index(direc)
+    offsets = SCOUT_EDGE_OFFSETS[direc_n]
+    for dx,dy in offsets:
+        tile = Position(pos.x+dx, pos.y+dy)
+        if tile in nearby:
+            env_map.set_environment_at(tile, ct.get_tile_env(tile))
+
+def log_entities_to_map(mp: Map, ct: Controller) -> None:
+    for id in ct.get_nearby_entities():
+        mp.set_entity_at(ct.get_position(id), ENTITIES_CODE[ct.get_entity_type(id)] + 8 * (ct.get_team() != ct.get_team(id)))
+
 
 def parse_scout(number: int) -> tuple[Position, dict[Position, Environment]]:
     """Unpack u32 into a position of the scouting bot and 9 environment data-pairs for the scouting edge"""
@@ -121,7 +134,7 @@ def read_stored_env_scout(store_index: int, stored_map: Map, ct: Controller) -> 
         stored_map.set_environment_at(tile, env)
         ct.draw_indicator_dot(tile, 0, 255, 0)
 
-def read_stored_scout(starting_store_index: int, stored_map: Map, ct: Controller) -> Position:
+def read_stored_scout(starting_store_index: int, stored_map: Map, ct: Controller) -> tuple[Position,set[Position]]:
     """Reads data from ct.store (starting_index and decrementing) into the stored map and resets store-slots"""
     bot_pos, scouted_env = parse_scout(ct.read_store(starting_store_index))
     close_entities = parse_entities(ct.read_store(starting_store_index - 1))
@@ -129,22 +142,28 @@ def read_stored_scout(starting_store_index: int, stored_map: Map, ct: Controller
     ct.write_store(starting_store_index, KIA_CODE)
     ct.write_store(starting_store_index - 1, 0)
     ct.write_store(starting_store_index - 2, 0)
+    missing = set()
+
     for tile, env in scouted_env.items():
         stored_map.set_environment_at(tile, env)
         #ct.draw_indicator_dot(tile, 0, 255, 0)
 
     for i in range(8):
         dx, dy = SCOUT_CLOSE_CROSS_OFFSETS[i]
+        close_entity_n = close_entities[i]
         tile = Position(bot_pos.x + dx, bot_pos.y + dy)
-        stored_map.set_entity_at(tile, close_entities[i])
-        #ct.draw_indicator_dot(tile, 0, 0, 255)
+        if tile in stored_map.my_harvesters and close_entity_n != 5: missing.add(tile)
+        if tile in stored_map.my_conveyors and close_entity_n != 6: missing.add(tile)
+        stored_map.set_entity_at(tile, close_entity_n)
 
         dx, dy = SCOUT_FAR_CROSS_OFFSETS[i]
+        far_entity_n = close_entities[i]
         tile = Position(bot_pos.x + dx, bot_pos.y + dy)
-        stored_map.set_entity_at(tile, far_entities[i])
-        #ct.draw_indicator_dot(tile, 255, 0, 255)
+        if tile in stored_map.my_harvesters and far_entity_n != 5: missing.add(tile)
+        if tile in stored_map.my_conveyors and far_entity_n != 6: missing.add(tile)
+        stored_map.set_entity_at(tile, far_entity_n)
 
-    return bot_pos
+    return bot_pos, missing
 
 def encode_build_order(go_to: Position, build_type: EntityType | None, build_direction: Direction, conveyor_path: list[Direction]) -> int:
     """goto(10-bit),type(3-bit),direction(2-bit)"""
@@ -157,7 +176,7 @@ def encode_build_order(go_to: Position, build_type: EntityType | None, build_dir
         for belt_direction in conveyor_path:
             number += CARDINALS.index(belt_direction) << shift
             shift += 2
-            if shift >= 30: break
+            if shift > 30: break
     return number
 
 def parse_build_order(number: int) -> tuple[Position, int, Direction, list[Direction]]:
@@ -178,6 +197,5 @@ def parse_build_order(number: int) -> tuple[Position, int, Direction, list[Direc
     return Position(go_to_x, go_to_y), build_type_n, CARDINALS[build_dir_n], conveyor_path
 
 if __name__ == '__main__':
-    print(1<<15)
-    print(parse_game_data_number(1<<15))
-    print(parse_game_data_number(encode_game_data(5,Position(13,25),True)))
+    print(encode_build_order(Position(14,13), EntityType.HARVESTER, Direction.SOUTH, [D]))
+    print(parse_build_order(12718))
