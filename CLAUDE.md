@@ -283,6 +283,42 @@ real gap. Do not copy a top bot's composition again; that is now 0 for 4
 (Pantheon's composition 21.3%, the econ rewrite 10.7%, MIXED 1-19 in real games,
 this 5.3%).
 
+### The launcher catapult: the mechanism works, the win rate does not
+
+`experiments/patch_catapult.py`. The bot implements CORE, BUILDER_BOT and
+SENTINEL only -- the launcher had never been given any code. The dismissal in
+this file covers only the *defensive* use (throwing enemy builders away from our
+core, which needs enemy builders to appear there). The offensive use is the one
+thing in the API that changes **geometry**, which is the bottleneck this session
+measured: a launcher picks up an adjacent builder from either team and throws it
+r^2=26, about 5.1 tiles, for 20 Ti and **+10% scale -- half a turret's**. Five
+tiles for one turn's work against 0.85 tiles/turn on foot.
+
+It works mechanically. Instrumented over 3 games: **11 launches against 0 for the
+incumbent**, and on `yggdrasil` time-to-first-sentinel went **67 -> 31 turns**.
+Note the first implementation *lost* tempo (median 43 vs 34) because the builder
+laid the launcher behind itself and marched out of range before the launcher's
+turn; it has to build **ahead** and hold position one turn to be picked up.
+
+Measured against the live v10, ladder pool, 150 games each:
+
+| max launchers | win rate |
+| --- | --- |
+| 2 | 25.3% |
+| 3 | 24.7% |
+| 5 | 20.0% |
+
+Monotone in the wrong direction, which is the signature of cost scale: the siege
+is money-limited (a sentinel costs 58-105 Ti at our scale and we can afford one
+only ~66% of the time), so spending on *transport* makes the thing being
+transported to more expensive. Faster arrival with less money to spend on arrival
+is not a trade that pays.
+
+**Every offensive option in the API has now been tried.** Gunner 18.7% (and it
+cannot even reach the core from a sentinel tile), launcher 20-25%, builder attack
+is 2 damage for 2 Ti so 250 hits kill a core, and `SELF_DESTRUCT_DAMAGE = 0`.
+The sentinel-only siege the incumbent already runs is the whole of the good news.
+
 ### Gunners cannot reach the core from a sentinel siege tile
 
 Measured while building `experiments/patch_hailmary.py`, and it closes off a
