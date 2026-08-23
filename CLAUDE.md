@@ -141,12 +141,17 @@ pool, seeds 1-5, `--tle 0`:
 | `scouter4-patched` vs `scouter2-patched` | 150 | 46.7% |
 
 **Beware the baseline when someone quotes a win rate.** Two figures circulated in the team
-chat that do not mean what they sound like: "scouter2-patched is 88%" is against
-`bots/scouter2` (**v4**, two submissions old), not against the live bot — against v8 it is
-62%. And "80%, scouter4 vs scouter2, both patched" is contradicted by direct measurement:
-`scouter4-patched` vs `scouter2-patched` is **46.7%** (70-80), i.e. it loses. Always name
-the opponent directory, and re-read the side-confusion warning in the measurement
-discipline section.
+chat and they are not the same kind of error:
+
+- *"scouter2-patched is 88% (132-18)"* — a **correct measurement against the wrong
+  baseline**. Reproduced here at **79.3%** (119-31) vs `bots/scouter2`, i.e. v4, two
+  submissions old. Against the bot that is actually live it is 62%. Both numbers are real;
+  only the second one tells you whether to ship.
+- *"80%, scouter4 vs scouter2, both patched"* — **contradicted by direct measurement**.
+  `scouter4-patched` vs `scouter2-patched` is **46.7%** (70-80): it loses. See the
+  side-confusion warning in the measurement-discipline section.
+
+Always name the opponent directory when quoting a win rate.
 
 Two things to take from this:
 
